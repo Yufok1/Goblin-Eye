@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build a draft release from
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  draft-release:
+    name: Verify and draft the release
+    runs-on: windows-latest
+    # The only job in this repository with write access.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: The tag must match the project version
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event.inputs.tag }}') { '${{ github.event.inputs.tag }}' } else { '${{ github.ref_name }}' }
+          $declared = (Select-String -Path src/goblin_eye/__init__.py -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ($tag -ne "v$declared") { throw "Tag $tag does not match project version $declared" }
+          "Tag $tag matches project version $declared"
+
+      - name: The committed dashboard must be current
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          git diff --exit-code -- web/dist
+
+      - name: Run the test suite
+        run: |
+          $env:PYTHONPATH = Join-Path (Get-Location) 'src'
+          py -3 -m unittest discover -s tests
+
+      - name: Build and verify the archive
+        run: |
+          py -3 scripts/build_release.py
+          py -3 scripts/verify_release.py
+
+      - name: Create a draft release for review
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          gh release create $env:TAG `
+            "dist/Goblin-Eye-*-Windows.zip" `
+            "dist/Goblin-Eye-*-Windows.zip.sha256" `
+            "dist/Goblin-Eye-*-Windows.validation.json" `
+            --draft `
+            --title "Goblin Eye $env:TAG" `
+            --notes "Automated draft. The archive passed fresh-install, empty-database, read-only MCP, companion MCP, spaced-path and Windows launcher verification. Review the assets before publishing."

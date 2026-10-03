@@ -1,0 +1,37 @@
+# Local evidence and settings
+/data/
+/config.json
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.log
+.env
+.env.*
+!.env.example
+.mcp.json
+.codex/
+.claude/
+
+# Environments and generated distributions
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+/build/
+/dist/
+/releases/
+PACKAGE-MANIFEST.json
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# web/dist is intentionally tracked so source downloads can launch on Windows.

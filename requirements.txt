@@ -1,0 +1,10 @@
+# Python 3.10 or newer is required.
+# Goblin Eye uses only the Python standard library at runtime.
+# No third-party Python packages need to be installed.
+# The share ZIP's Windows launcher runs the included source directly.
+# Running `python -m pip install -r requirements.txt` is valid and installs nothing.
+# Optional editable developer install: `python -m pip install -e .`
+# That developer install uses the build requirements declared in pyproject.toml.
+# Node.js/npm are needed only to rebuild the web UI, not to run the share ZIP.
+# Your CLI agent is installed and authenticated separately; it is not a Python
+# dependency of Goblin Eye, and no model provider API key is required by this app.

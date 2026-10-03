@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Goblin Eye — Azeroth Economic Intelligence</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><span></span></div>
+        <div><p class="eyebrow">Local intelligence</p><h1>Goblin Eye</h1></div>
+      </div>
+      <nav aria-label="Evidence views">
+        <button class="nav-item active" data-view="companion"><span>00</span>Companion</button>
+        <button class="nav-item" data-view="items"><span>01</span>Item explorer</button>
+        <button class="nav-item" data-view="market"><span>02</span>Market records</button>
+        <button class="nav-item" data-view="world"><span>03</span>World data</button>
+        <button class="nav-item" data-view="sources"><span>04</span>Source health</button>
+        <button class="nav-item" data-view="next-data"><span>05</span>Missing evidence</button>
+        <button class="nav-item" data-view="characters"><span>06</span>Characters</button>
+        <button class="nav-item" data-view="history"><span>07</span>Market history</button>
+        <button class="nav-item" data-view="scans"><span>08</span>Saved scan overview</button>
+      </nav>
+      <div class="boundary-note">
+        <span class="boundary-icon">◇</span>
+        <p><strong>Evidence only</strong>Every action in Azeroth remains yours.<br>Static item research: <a href="https://ahledger.com/" target="_blank" rel="noreferrer">AHledger</a></p>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="market-name">WoW Forever</p>
+          <h2 id="page-title">Economic evidence</h2>
+        </div>
+        <div class="status-cluster">
+          <span class="status-pill" id="freshness-pill"><i></i>Loading data</span>
+        </div>
+      </header>
+
+      <section class="hero" id="hero">
+        <div>
+          <p class="eyebrow">Agent-ready research</p>
+          <h3>Resource the world.<br><em>Interrogate the evidence.</em></h3>
+          <p class="hero-copy">Local observations and sourced world data, preserved with timestamps, provenance, confidence, and conflicts for Codex or Claude to investigate with you.</p>
+        </div>
+        <div class="hero-metrics" id="hero-metrics">
+          <div><span class="metric-value">—</span><span class="metric-label">Records</span></div>
+          <div><span class="metric-value">—</span><span class="metric-label">Source types</span></div>
+          <div><span class="metric-value">Local</span><span class="metric-label">Data custody</span></div>
+        </div>
+      </section>
+
+      <section id="evidence-view">
+        <form id="item-search" class="item-search" role="search">
+          <label for="item-query">Find an item</label>
+          <input id="item-query" type="search" placeholder="Item name or ID" autocomplete="off">
+          <button type="submit">Search</button>
+        </form>
+        <div class="section-heading">
+          <div><p class="eyebrow">Sourced observations</p><h3 id="feed-heading">Research workspace</h3></div>
+          <div class="legend"><span><i class="high"></i>Stronger</span><span><i class="low"></i>Weaker</span></div>
+        </div>
+        <div class="evidence-grid" id="evidence-grid" aria-live="polite"></div>
+      </section>
+
+      <section class="hidden" id="sources-view"></section>
+      <section class="hidden" id="next-data-view"></section>
+      <section class="hidden companion-view" id="companion-view">
+        <p class="eyebrow">Player-led continuity</p>
+        <h3>Goals and session notes</h3>
+        <p class="muted">Keep the context you want any connected agent to remember. Entries are personal reports or analysis, never verified game state. No AI provider is configured here.</p>
+        <form id="companion-add-form" class="companion-form">
+          <label>Type<select name="kind"><option value="goal">Goal</option><option value="note">Note</option><option value="session">Session report</option></select></label>
+          <label>Title<input name="title" maxlength="160" required placeholder="What are you working toward?"></label>
+          <label class="wide">Details<textarea name="body" maxlength="8000" required rows="4" placeholder="What happened, what matters, or what to investigate next"></textarea></label>
+          <label>Basis<select name="basis"><option value="player_report">I reported this</option><option value="agent_inference">Agent inference</option><option value="sourced_evidence">Sourced evidence</option></select></label>
+          <label class="wide">Evidence references, one per line (required for sourced evidence)<textarea name="evidence_refs" rows="2" placeholder="Source and record ID or URL"></textarea></label>
+          <button type="submit">Save entry</button><span id="companion-message" role="status"></span>
+        </form>
+        <div class="companion-toolbar">
+          <label>Show<select id="companion-status-filter"><option value="active">Active</option><option value="completed">Completed</option><option value="archived">Archived</option><option value="">All</option></select></label>
+          <label>Type<select id="companion-kind-filter"><option value="">All</option><option value="goal">Goals</option><option value="note">Notes</option><option value="session">Sessions</option></select></label>
+        </div>
+        <div id="companion-entries" aria-live="polite"></div>
+        <div class="pagination"><button id="companion-prev">Previous</button><span id="companion-page"></span><button id="companion-next">Next</button></div>
+      </section>
+    </main>
+
+    <aside class="detail-panel" id="detail-panel" aria-label="Evidence details">
+      <button class="close-detail" id="close-detail" aria-label="Close details">×</button>
+      <div id="detail-content">
+        <p class="eyebrow">Source inspector</p>
+        <h3>Select a record</h3>
+        <p class="muted">Open any card to inspect exactly what the source supplied.</p>
+      </div>
+    </aside>
+  </div>
+  <script type="module" src="/assets/main.js"></script>
+</body>
+</html>

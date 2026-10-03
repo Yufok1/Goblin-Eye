@@ -1,0 +1,28 @@
+name: Bug report
+description: Report a reproducible Goblin Eye problem
+body:
+  - type: markdown
+    attributes:
+      value: "Remove character/account names and private paths. Do not attach databases, SavedVariables, credentials or full logs."
+  - type: input
+    id: version
+    attributes:
+      label: Goblin Eye version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows and Python versions
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected behavior and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized error and relevant addon versions
+      description: "Include source-health error text if useful, after removing personal information."
