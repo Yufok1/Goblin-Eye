@@ -67,7 +67,7 @@ def verify_bundled_runtime(root: Path) -> str:
     recorded = json.loads(stamp.read_text(encoding="utf-8"))
     if not recorded.get("version") or len(str(recorded.get("sha256", ""))) != 64:
         fail("the bundled runtime stamp does not record a version and archive hash")
-    # The stdlib lives in python312.zip and SQLite in _sqlite3.pyd. If either was
+    # The stdlib lives in the bundled python3*.zip and SQLite in _sqlite3.pyd. If either was
     # dropped from the archive, this is where it shows up.
     environment = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     probe = subprocess.run([str(exe), "-c", "import sqlite3, sys; print('%d.%d' % sys.version_info[:2])"],

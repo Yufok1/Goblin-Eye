@@ -6,7 +6,7 @@ edition includes the fixes from October 3, 2026.
 
 **You can use the dashboard without an AI subscription.** Optional AI setup comes
 after the dashboard works. Your local auction workspace is recorded as
-**unknown** faction, ruleset, region and realm until you set them in
+**unknown** faction, ruleset, region and realm until a source reports them or you set them in
 `config.json`; the dashboard works for any Forever server. Public regional
 markets are shown separately.
 
@@ -94,6 +94,33 @@ separate upload/sync app or an AHledger account for this local import.
 An import timestamp shows when Goblin Eye read a file; the scan/capture timestamp
 shows when the game data was recorded. Missing bank, mail or recipe data usually
 means that category has not been captured yet.
+
+## Choose your market
+
+Use a separate extracted Goblin Eye folder for each realm/faction you play.
+AHledger's newest eligible saved scan identifies an unset local profile;
+scans from other realms/factions are skipped. Auctionator can identify a single
+saved realm/faction, but cannot choose between several without that profile.
+
+To select a market yourself, stop Goblin Eye, edit these fields in `config.json`,
+and restart it. For example, replace `Your realm name` with your actual realm:
+
+```json
+"local_realm": "Your realm name",
+"local_faction": "alliance",
+"local_region": "eu",
+"local_ruleset": "normal"
+```
+
+Faction choices are `horde`, `alliance`, `neutral`, or `unknown`; ruleset choices
+are `normal`, `pvp`, `rp`, or `unknown`. Leave region/ruleset `unknown` if you do
+not know them. The realm name alone does not establish either. Once scans have
+established a profile, changing it to a different market requires a separate
+copy with an empty database so the prices cannot be mixed.
+
+Upgrades preserve older pooled scans under **WoW Forever (legacy identity
+unverified)**. Select that market in History to inspect them separately.
+Fresh scans continue in the current market; no reset or data deletion is needed.
 
 ## 4. Optional: use an AI
 

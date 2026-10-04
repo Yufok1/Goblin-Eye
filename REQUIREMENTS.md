@@ -39,8 +39,13 @@ Each friend gets their own local database and settings. Do not copy somebody
 else's data/ directory or config.json as part of setup. Each database records one
 local market profile; faction, ruleset, region and realm stay unknown until the
 player sets them or a supported source reports them. Set them in `config.json`
-when you know them. All six public AHledger Forever markets remain separate
+when you know them. Available public AHledger Forever markets remain separate
 reference sources.
+
+Use a separate extracted copy for each realm/faction you play. Saved scans from
+other profiles are skipped. A new AHledger scan can identify an unset profile;
+if Auctionator contains several markets, select `local_realm` and `local_faction`
+in config.json. Region and ruleset are never guessed from a realm name.
 
 ## Optional data and networking
 

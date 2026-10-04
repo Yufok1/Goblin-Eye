@@ -3,8 +3,17 @@
 This share edition starts empty. Each database holds one local market profile;
 faction, ruleset, region and realm default to unknown and are only established by
 explicit configuration or source-reported scan fields. Local observations and
-all six public Forever markets retain separate provenance. Generic auction
+available public Forever markets retain separate provenance. Generic auction
 imports and bulk history recovery remain disabled.
+
+Each installation imports one local market. AHledger establishes an unset
+profile from the newest eligible saved scan. Mismatching saved realms, factions
+and known regions are skipped without aborting matching imports. Auctionator's
+realm/faction keys lack individual scan times, so multiple matching markets
+require an explicit selection or an AHledger-established profile. Migration 021
+preserves the earlier pooled market's IDs and linked rows under
+`wow-forever-legacy`, with unverified identity. New scans use `wow-forever`;
+historical evidence is never silently relabelled as the selected market.
 
 ## Evidence pipeline
 

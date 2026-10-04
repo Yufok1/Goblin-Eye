@@ -34,9 +34,9 @@ interpreter. It is the official CPython Windows embeddable distribution:
 
 | Component | Version | License |
 | --- | --- | --- |
-| CPython embeddable (amd64) | 3.12.8 | PSF-2.0 — https://docs.python.org/3/license.html |
+| CPython embeddable (amd64) | 3.13.16 | PSF-2.0 — https://docs.python.org/3/license.html |
 
-It is unmodified apart from `python312._pth`, which is rewritten to add this
+It is unmodified apart from `python313._pth`, which is rewritten to add this
 project's `src` directory, and `scripts/python_runtime.json`, which records the
 pinned upstream URL and SHA-256. `python/.goblin-eye-python.json` records the
 installed version and hash. `scripts/fetch_python.py --check` verifies that

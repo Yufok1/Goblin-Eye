@@ -41,17 +41,26 @@ def _save_profile(c, profile):
               tuple(profile[key] for key in ('faction','ruleset','region','realm')))
 
 
+def matches_profile(profile, *, faction='unknown', region='unknown', realm='unknown'):
+    """Missing source fields cannot contradict an explicitly selected market."""
+    return all(not value or value.casefold() == 'unknown'
+               or profile[key].casefold() == 'unknown'
+               or profile[key].casefold() == value.casefold()
+               for key, value in dict(faction=faction, region=region, realm=realm).items())
+
+
 def configure_market(database, settings):
     with database.transaction() as c:
         profile = market_profile(c)
         values = {key: getattr(settings, 'local_' + key) for key in ('faction','ruleset','region','realm')}
-        _save_profile(c, _merge_identity(profile, values))
+        profile = _merge_identity(profile, values)
+        _save_profile(c, profile)
+        c.execute("UPDATE markets SET faction=?,ruleset=?,region=? WHERE market_key=?",
+                  (profile['faction'], profile['ruleset'], profile['region'], MARKET_KEY))
 
 
 def local_market(c, source_id, retrieved_at, build=None, *, faction='unknown', region='unknown', realm='unknown'):
     profile = market_profile(c)
-    if profile['legacy_unverified']:
-        raise ValueError('This database contains legacy local-market assumptions. Keep it for historical research and use a new database for neutral market imports; no evidence was deleted.')
     # Only explicit source fields identify the market; realm names do not establish a ruleset.
     profile = _merge_identity(profile, dict(faction=faction.lower(), region=region.lower(), realm=realm))
     _save_profile(c, profile)
@@ -79,12 +88,13 @@ def context(database):
                          role='Separate reference market; never substitute public quotes for local availability'),
         faction=profile['faction'],ruleset=profile['ruleset'],region=profile['region'],realm=profile['realm'],
         legacy_market_requires_review=bool(profile['legacy_unverified']),
+        legacy_market_key='wow-forever-legacy' if profile['legacy_unverified'] else None,
         reset_at=p['reset_at'] if p else None,
         generic_auction_imports_enabled=False,
         reset_boundary_status='recorded' if p else 'missing',
         reset_boundary_warning=None if p else 'No reset cutoff is stored. Historical reset filtering is unavailable.',
         identity_basis='Explicit local configuration and source-reported scan fields; unknown values are not inferred',
-        instructions='Use wow-forever for this database only. Each database holds one local market profile. Do not infer faction, ruleset or region from a realm name. Public markets retain their own source and identity. Compare only explicitly identified markets, preserve capture timestamps and explain transfer assumptions. Asking prices do not establish completed sales.')
+        instructions='Use wow-forever for this installation only. Each database holds one local market profile. Historical wow-forever-legacy evidence has unverified market identity and must be queried separately. Do not infer faction, ruleset or region from a realm name. Public markets retain their own source and identity. Compare only explicitly identified markets, preserve capture timestamps and explain transfer assumptions. Asking prices do not establish completed sales.')
 
 
 def restore_static_identity_selection(c):

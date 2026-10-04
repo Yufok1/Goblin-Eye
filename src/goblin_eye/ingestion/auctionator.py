@@ -14,7 +14,7 @@ from typing import Any, Callable, Iterable
 
 from goblin_eye.repository import Database
 from goblin_eye.history import record_capture
-from goblin_eye.auction_policy import policy, local_market, digest as entry_digest
+from goblin_eye.auction_policy import policy, local_market, market_profile, matches_profile, digest as entry_digest
 import json
 
 from .base import AdapterCapability, ImportResult
@@ -191,7 +191,7 @@ class AuctionatorSavedVariablesAdapter:
         imported = datetime.now(timezone.utc).isoformat()
         digest = hashlib.sha256(body).hexdigest()
         scan_at = datetime.fromtimestamp(capture.scan_timestamp, timezone.utc).isoformat() if capture.scan_timestamp else modified
-        record_count = 0
+        record_count, market_count, skipped = 0, 0, 0
         with database.transaction() as connection:
             reset_policy = policy(connection)
             if reset_policy and (not capture.scan_timestamp or datetime.fromisoformat(scan_at) <= datetime.fromisoformat(reset_policy['reset_at'])):
@@ -207,13 +207,23 @@ class AuctionatorSavedVariablesAdapter:
             source_id = connection.execute(
                 "SELECT id FROM sources WHERE source_key='local-auctionator'"
             ).fetchone()["id"]
-            for raw_market, market_data in capture.markets.items():
+            identities = {}
+            for raw_market in capture.markets:
                 # Inspected LegacyAH key: GetRealmName() + space + UnitFactionGroup().
                 identity = re.fullmatch(r"(.+) (Horde|Alliance|Neutral)", raw_market)
                 if not identity:
                     raise ValueError('Unrecognized Auctionator realm/faction key; retaining existing evidence')
+                if matches_profile(market_profile(connection), realm=identity.group(1), faction=identity.group(2)):
+                    identities[raw_market] = identity
+                else:
+                    skipped += 1
+            if len(identities) > 1:
+                raise ValueError('Auctionator contains multiple matching realms/factions and no per-market scan timestamp. Set local_realm and local_faction in config.json, or let a new AHledger scan identify this installation first. Existing evidence was retained.')
+            for raw_market, identity in identities.items():
+                market_data = capture.markets[raw_market]
                 market_id = local_market(connection,source_id,scan_at,
                     realm=identity.group(1), faction=identity.group(2))
+                market_count += 1
                 if reset_policy:
                     baseline = {r['item_key']:r['digest'] for r in connection.execute(
                         'SELECT item_key,digest FROM auction_reset_baselines WHERE path=? AND raw_market=?',
@@ -293,7 +303,10 @@ class AuctionatorSavedVariablesAdapter:
                 file_name, record_count) VALUES (?, ?, ?, ?, 'complete', ?, ?)""",
                 (self.capability.key, source_id, imported, imported, path.name, record_count),
             )
-        return ImportResult(self.capability.key, "local-auctionator", record_count, len(capture.markets))
+            connection.execute('UPDATE sources SET notes=? WHERE id=?',
+                (f'Auctionator database version {capture.database_version}; aggregate price history. Latest file: {market_count} selected market(s), {skipped} other-market market(s) skipped.', source_id))
+        notes = ((f'Skipped {skipped} market(s) belonging to other realms/factions; use a separate installation for them.',) if skipped else ())
+        return ImportResult(self.capability.key, "local-auctionator", record_count, market_count, notes)
 
 
 class AuctionatorWatcher:

@@ -14,6 +14,13 @@ retain their exact forever.{normal|pvp|rp}.{alliance|horde}.us keys and
 source_key ahledger; local prices use local-auctionator or local-ahledger.
 Never pool these silently.
 
+Each installation imports one selected market. AHledger can establish an unset
+profile from its newest eligible scan; unrelated saved scans are skipped.
+Auctionator needs an unambiguous realm/faction or an already selected profile.
+Older pooled evidence is preserved as wow-forever-legacy with unverified identity;
+query it separately rather than attributing it to the current profile. Upgrades
+do not require deleting auction evidence or resetting the database.
+
 Use get_economic_summary and its auction_context before economic conclusions.
 For character or adventure advice, query list_characters and the intended
 get_character_snapshot. Preserve capture time separately from import time.

@@ -155,7 +155,7 @@ async function showItem(itemId: number, desiredSnapshotId?: number, desiredMarke
       $("#item-prices").innerHTML = rows.map(row => `<div class="evidence-item"><strong>${copper(row.current_min_unit_copper as number | null)} observed minimum</strong><span>${esc(row.source_key)} · ${esc(row.observed_date)}<br>Item key ${esc(row.item_key)} · Quantity ${esc(row.available_quantity)}<br>${row.source_key === "local-auctionator" ? "File modified (not per-item quote time)" : "Source timestamp"} ${esc(row.source_modified_at)}</span></div>`).join("");
     };
     if (markets.length) { $<HTMLSelectElement>("#item-market").value = markets.includes("wow-forever") ? "wow-forever" : markets[0]; renderPrices(); $("#item-market").addEventListener("change", renderPrices); }
-    $("#detail-content").insertAdjacentHTML("beforeend", `<section><h4>Actual auction listings</h4>${item.listing_markets.length ? `<select id="depth-market" hidden>${item.listing_markets.map(market => `<option value="${esc(market.market_key)}">${esc(market.name)}</option>`).join("")}</select><label class="muted" for="depth-snapshot">Retained snapshot</label><select id="depth-snapshot"><option value="">Latest scan</option></select><div id="item-depth"></div>` : `<p class="muted">No individual auction rows indexed for this item.</p>`}</section>`);
+    $("#detail-content").insertAdjacentHTML("beforeend", `<section><h4>Actual auction listings</h4>${item.listing_markets.length ? `<label for="depth-market">Listing market</label><select id="depth-market">${item.listing_markets.map(market => `<option value="${esc(market.market_key)}">${esc(market.name)}</option>`).join("")}</select><label class="muted" for="depth-snapshot">Retained snapshot</label><select id="depth-snapshot"><option value="">Latest scan</option></select><div id="item-depth"></div>` : `<p class="muted">No individual auction rows indexed for this item.</p>`}</section>`);
     if (item.listing_markets.length) {
       if (desiredMarket && item.listing_markets.some(m => m.market_key === desiredMarket)) $<HTMLSelectElement>("#depth-market").value = desiredMarket;
       let scansMarket = "";
@@ -332,7 +332,7 @@ function renderHistory(): void {
   $("#feed-heading").textContent = "Retained observations over time";
   $("#evidence-grid").innerHTML = `<section class="history-panel"><form id="history-form" class="history-controls">
     <label>Item ID<input id="history-item" type="number" min="1" required value="${historyItem ?? ""}"></label>
-    <input id="history-market" type="hidden" value="wow-forever">
+    <label id="history-local-label">Local market<select id="history-market"><option value="wow-forever">Current installation's scans</option>${(state.summary?.observed_markets ?? []).filter(m => m.market_key === 'wow-forever-legacy').map(m => `<option value="${esc(m.market_key)}">${esc(m.name)}</option>`).join('')}</select></label>
     <label>Evidence<select id="history-kind"><option value="scans">Auction listings across scans</option><option value="prices">Auctionator price observations</option><option value="public">AHledger community prices</option></select></label>
     <label id="history-public-label" hidden>Comparison market<select id="history-public-market">${(state.summary?.observed_markets ?? []).filter(m => String(m.market_key).startsWith("forever.")).map(m => `<option value="${esc(m.market_key)}" >${esc(m.name)}</option>`).join("")}</select></label>
     <label>From (local time)<input id="history-from" type="datetime-local" required></label>
@@ -344,14 +344,14 @@ function renderHistory(): void {
   const local = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0,16);
   $<HTMLInputElement>("#history-from").value = local(new Date(Date.now() - 7 * 86400000));
   $<HTMLInputElement>("#history-to").value = local(new Date(Date.now() + 60000));
-  $("#history-kind").addEventListener("change", () => { $<HTMLElement>("#history-public-label").hidden = $<HTMLSelectElement>("#history-kind").value !== "public"; });
+  $("#history-kind").addEventListener("change", () => { const isPublic = $<HTMLSelectElement>("#history-kind").value === "public"; $<HTMLElement>("#history-public-label").hidden = !isPublic; $<HTMLElement>("#history-local-label").hidden = isPublic; });
   $("#history-form").addEventListener("submit", event => { event.preventDefault(); void loadHistory(); });
 }
 
 async function loadHistory(offset = 0): Promise<void> {
   const request = ++historyRequest;
   const item = Number($<HTMLInputElement>("#history-item").value);
-  const market = $<HTMLSelectElement>("#history-kind").value === "public" ? $<HTMLSelectElement>("#history-public-market").value : "wow-forever";
+  const market = $<HTMLSelectElement>("#history-kind").value === "public" ? $<HTMLSelectElement>("#history-public-market").value : $<HTMLSelectElement>("#history-market").value;
   const startTime = new Date($<HTMLInputElement>("#history-from").value).toISOString();
   const endTime = new Date($<HTMLInputElement>("#history-to").value).toISOString();
   const local = $<HTMLSelectElement>("#history-kind").value === "scans";

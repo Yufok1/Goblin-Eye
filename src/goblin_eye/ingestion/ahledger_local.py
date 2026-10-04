@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import re
 import threading
-from goblin_eye.auction_policy import policy, local_market
+from goblin_eye.auction_policy import policy, local_market, market_profile, matches_profile
 
 from goblin_eye.repository import Database
 from .auctionator import discover_auctionator_files
@@ -80,20 +80,26 @@ class LocalAHLedgerAdapter:
     def import_file(self, database: Database, path: Path) -> ImportResult:
         scans = parse_scan_file(path)
         now = datetime.now(timezone.utc).isoformat()
-        count, imported = 0, 0
+        count, imported, skipped = 0, 0, 0
         with database.transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?, 'Local AHledger scans', 'local_addon', ?, 1, ?, ?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
                 (SOURCE_KEY,self.capability.documentation_url,"Only saved auction scans; region unknown remains unknown; no transactions.",now))
             source_id = connection.execute("SELECT id FROM sources WHERE source_key=?",(SOURCE_KEY,)).fetchone()[0]
-            for scan in scans:
+            # Establish an unset profile from the newest eligible source scan.
+            # Afterwards, other saved realms/factions are skipped independently.
+            for scan in sorted(scans, key=lambda scan: scan['source']['ts'], reverse=True):
                 raw = scan["source"]
                 captured = datetime.fromtimestamp(raw["ts"],timezone.utc).isoformat()
                 body = json.dumps(raw,sort_keys=True,separators=(",",":"),ensure_ascii=False).encode("utf-8")
                 digest = hashlib.sha256(body).hexdigest()
                 p = policy(connection)
                 if p and datetime.fromisoformat(captured) <= datetime.fromisoformat(p['reset_at']):
+                    continue
+                if not matches_profile(market_profile(connection), faction=raw['faction'],
+                                       region=raw['region'], realm=raw['realm']):
+                    skipped += 1
                     continue
                 market_id = local_market(connection,source_id,now,raw['build'], faction=raw['faction'], region=raw['region'], realm=raw['realm'])
                 external_id = f"ahledger-local:{raw['ts']}:{digest}"
@@ -115,7 +121,10 @@ class LocalAHLedgerAdapter:
             if imported:
                 connection.execute("""INSERT INTO imports(adapter_key,source_id,started_at,completed_at,status,file_name,record_count)
                     VALUES (?,?,?,?,'complete',?,?)""",(self.capability.key,source_id,now,now,str(path),count))
-        return ImportResult(self.capability.key,SOURCE_KEY,count,imported,LIMITATIONS)
+            connection.execute('UPDATE sources SET notes=? WHERE id=?',
+                (f'Only saved auction scans; capture identity is source-reported. Latest file: {imported} new scan(s), {skipped} other-market scan(s) skipped. No transactions.', source_id))
+        notes = LIMITATIONS + ((f'Skipped {skipped} scan(s) from other market profiles; use a separate installation for them.',) if skipped else ())
+        return ImportResult(self.capability.key,SOURCE_KEY,count,imported,notes)
 
 
 def discover_local_scans(configured: tuple[str,...] = ()) -> list[Path]:

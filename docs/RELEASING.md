@@ -5,12 +5,11 @@ Versions in `src/goblin_eye/__init__.py`, `pyproject.toml`, `package.json` and
 dashboard, and commit the intended release first.
 
 ```powershell
-$env:PYTHONPATH = Join-Path (Get-Location) 'src'
-py -3 -m unittest discover -s tests -v
+.\python\python.exe -m unittest discover -s tests -v
 npm ci --ignore-scripts
 npm run build
-py -3 scripts/build_release.py
-py -3 scripts/verify_release.py dist/Goblin-Eye-0.1.0-Windows.zip
+.\python\python.exe scripts/build_release.py
+.\python\python.exe scripts/verify_release.py dist/Goblin-Eye-0.1.0-Windows.zip
 ```
 
 The builder first checks that the version in `src/goblin_eye/__init__.py`,

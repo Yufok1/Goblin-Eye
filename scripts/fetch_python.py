@@ -19,9 +19,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PIN_PATH = Path(__file__).with_name("python_runtime.json")
-# The embeddable build ignores PYTHONPATH; the path is set in python312._pth.
-PTH_NAME = "python312._pth"
-PTH_BODY = "python312.zip\n.\n..\\src\nimport site\n"
+# The embeddable build ignores PYTHONPATH; use the ABI of the pinned runtime.
+PYTHON_ABI = ''.join(json.loads(PIN_PATH.read_text(encoding='utf-8'))['version'].split('.')[:2])
+PTH_NAME = f"python{PYTHON_ABI}._pth"
+PTH_BODY = f"python{PYTHON_ABI}.zip\n.\n..\\src\nimport site\n"
 STAMP = ".goblin-eye-python.json"
 
 

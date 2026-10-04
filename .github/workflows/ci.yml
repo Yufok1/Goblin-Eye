@@ -29,13 +29,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Run the test suite
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            $env:PYTHONPATH = Join-Path (Get-Location) 'src'
-            py -3 -m unittest discover -s tests -v
-          else
-            PYTHONPATH=src python3 -m unittest discover -s tests -v
-          fi
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -v
 
   dashboard:
     name: Dashboard build is current

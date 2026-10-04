@@ -254,7 +254,7 @@ for tool in TOOLS:
     spec = tool['inputSchema']
     if 'market_key' in spec.get('properties', {}):
         spec['properties']['market_key'] = {'type':'string','minLength':1,'maxLength':200,'default':'wow-forever',
-            'description':'Defaults to your local WoW Forever scans. Select an explicit forever.* key only for public-market research or comparisons.'}
+            'description':'Defaults to this installation\'s local WoW Forever scans. Use an explicit forever.* key for public comparisons, or wow-forever-legacy for preserved history with unverified market identity.'}
         spec['required'] = [key for key in spec.get('required', []) if key != 'market_key']
 
 
