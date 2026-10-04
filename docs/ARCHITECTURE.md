@@ -9,8 +9,12 @@ imports and bulk history recovery remain disabled.
 Each installation imports one local market. AHledger establishes an unset
 profile from the newest eligible saved scan. Mismatching saved realms, factions
 and known regions are skipped without aborting matching imports. Auctionator's
-realm/faction keys lack individual scan times, so multiple matching markets
-require an explicit selection or an AHledger-established profile. Migration 021
+saved keys lack individual scan times, so multiple matching markets
+require an explicit selection or an AHledger-established profile. Legacy keys
+include realm/faction; normalized modern realm keys match the selected realm.
+Regional PvP/PvE/RP buckets require an explicitly configured local ruleset and
+take priority over old realm storage. Modern keys provide no faction or region;
+that limitation and the raw key remain in capture evidence. Migration 021
 preserves the earlier pooled market's IDs and linked rows under
 `wow-forever-legacy`, with unverified identity. New scans use `wow-forever`;
 historical evidence is never silently relabelled as the selected market.
@@ -19,7 +23,7 @@ historical evidence is never silently relabelled as the selected market.
 
 Adapters decode a documented or directly inspected source into normalized SQLite records. They never generate conclusions or fill absent fields. Source records retain retrieval time, build or content phase when known, confidence, evidence kind, and a raw reference.
 
-The Auctionator adapter watches the account-wide SavedVariables file. It uses the addon’s inspected version-8 structure: `m` is the latest observed minimum unit price, `l` and `h` are daily bounds for the observed low price, and `a` is the daily available quantity. The raw database key is retained because gear variants can use composite keys.
+The Auctionator adapter watches the account-wide SavedVariables file. It uses the addon’s inspected version-8 structure, reading both CBOR strings and non-executed Lua literals: `m` is the latest observed minimum unit price, `l` and `h` are daily bounds for the observed low price, and `a` is the daily available quantity. The raw database key is retained because gear variants can use composite keys. Source health exposes watched-file errors even before a successful source insertion. Unchanged failures retry after at least 60 seconds; changed files or profile settings retry immediately.
 
 ## Agent boundary
 

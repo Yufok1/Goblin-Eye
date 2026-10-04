@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1 — 2026-10-04
+
+- Support Auctionator 340 normalized realm and regional ruleset keys, alongside
+  legacy realm/faction keys. Explicitly selected regional storage takes priority
+  over old realm data; unknown identity is never inferred from a realm label.
+- Read both serialized CBOR and literal Lua price tables without executing Lua.
+- Expose saved-file import errors in MCP/API source health and the dashboard,
+  including failures that happen before a source has ever imported successfully.
+- Back off unchanged Auctionator failures for at least 60 seconds, while changed
+  files or market settings retry immediately; successful imports clear the error.
+- Preserve existing databases and scans; no schema migration or reset is needed.
+
 ## 0.1.0 — 2026-10-03
 
 Initial public source preparation for the Windows edition.

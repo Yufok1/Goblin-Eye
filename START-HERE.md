@@ -2,7 +2,7 @@
 
 Goblin Eye puts your saved auction scans, character information, recipes, item
 sources and world locations in a local browser dashboard. This Windows share
-edition includes the fixes from October 3, 2026.
+edition includes the fixes from October 4, 2026.
 
 **You can use the dashboard without an AI subscription.** Optional AI setup comes
 after the dashboard works. Your local auction workspace is recorded as
@@ -101,6 +101,13 @@ Use a separate extracted Goblin Eye folder for each realm/faction you play.
 AHledger's newest eligible saved scan identifies an unset local profile;
 scans from other realms/factions are skipped. Auctionator can identify a single
 saved realm/faction, but cannot choose between several without that profile.
+
+Auctionator 340 can also save normalized realm keys and regional `PvP`, `PvE`
+or `RP` buckets. A matching regional bucket requires `local_ruleset` set
+explicitly (`pvp`, `normal` or `rp`); it takes priority over old realm storage.
+Normalized realm keys match the realm selected by AHledger or configuration.
+Unmatched keys are skipped and shown in Source health; they are never pooled.
+Saved-file failures appear there even before an addon has imported successfully.
 
 To select a market yourself, stop Goblin Eye, edit these fields in `config.json`,
 and restart it. For example, replace `Your realm name` with your actual realm:

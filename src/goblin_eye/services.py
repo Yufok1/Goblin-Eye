@@ -378,6 +378,8 @@ class ResearchService:
 
     def sources(self) -> dict[str, Any]:
         with self.database.transaction() as connection:
+            watched_files = [dict(row) for row in connection.execute(
+                'SELECT * FROM watched_files ORDER BY path')]
             sources = [dict(row) for row in connection.execute(
                 """SELECT s.*,
                 (SELECT COUNT(*) FROM snapshots sn WHERE sn.source_id=s.id) snapshot_count,
@@ -451,6 +453,8 @@ class ResearchService:
                 "local_ahledger": self.settings.auto_import_ahledger_scans,
             },
             "sources": sources,
+            "watched_files": watched_files,
+            "file_import_error_count": sum(row['last_status'] == 'error' for row in watched_files),
             "character_imports": {"alts_forever": self.settings.auto_import_alts_forever},
             "research_imports": {
                 "professiondb": self.settings.auto_import_professiondb,

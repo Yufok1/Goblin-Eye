@@ -18,6 +18,7 @@ from goblin_eye.auction_policy import policy, local_market, market_profile, matc
 import json
 
 from .base import AdapterCapability, ImportResult
+from .lua_literals import LuaLiteralReader
 
 
 SCAN_DAY_ZERO = datetime(2020, 1, 1, tzinfo=timezone.utc)
@@ -138,24 +139,34 @@ def parse_auctionator_file(path: Path, data: bytes | None = None) -> Auctionator
     if section_start < 0 or section_end < 0:
         raise ValueError("Auctionator price database section not found")
     section = data[section_start:section_end]
-    version_match = re.search(rb'\["__dbversion"\]\s*=\s*(\d+)', section)
-    if not version_match:
-        raise ValueError("Auctionator database version not found")
-    if int(version_match.group(1)) != 8:
+    # SavedVariables contain arbitrary CBOR bytes, not a UTF-8 text document.
+    # Latin-1 preserves those bytes while the literal reader handles Lua escapes.
+    reader = LuaLiteralReader(section.decode('latin-1'))
+    reader.expect('AUCTIONATOR_PRICE_DATABASE')
+    reader.expect('=')
+    root = reader.read()
+    reader.skip()
+    if reader.position != len(reader.text) or not isinstance(root, dict):
+        raise ValueError('Invalid Auctionator price database literal')
+    if type(root.get('__dbversion')) is not int or root['__dbversion'] != 8:
         raise ValueError("Only inspected Auctionator database version 8 is supported")
     scan_match = re.search(rb'\["TimeOfLastBrowseScan"\]\s*=\s*(\d+)', data[:section_start])
     scan_timestamp = int(scan_match.group(1)) if scan_match else None
     markets: dict[str, dict[str, Any]] = {}
-    entry_pattern = re.compile(rb'\["([^"\\]+)"\]\s*=\s*"')
-    for match in entry_pattern.finditer(section):
-        key = match.group(1).decode("utf-8")
+    for raw_key, encoded in root.items():
+        if not isinstance(raw_key, str):
+            raise ValueError('Invalid Auctionator market key')
+        key = raw_key.encode('latin-1').decode('utf-8')
         if key == "__dbversion":
             continue
-        encoded, _ = _lua_string(section, match.end() - 1)
-        decoder = CborDecoder(encoded)
-        decoded = _text_keys(decoder.decode())
-        if decoder.position != len(encoded):
-            raise ValueError(f"Auctionator market {key} contains trailing serialized data")
+        if isinstance(encoded, str):
+            encoded = encoded.encode('latin-1')
+            decoder = CborDecoder(encoded)
+            decoded = _text_keys(decoder.decode())
+            if decoder.position != len(encoded):
+                raise ValueError(f"Auctionator market {key} contains trailing serialized data")
+        else:
+            decoded = encoded
         if not isinstance(decoded, dict):
             raise ValueError(f"Auctionator market {key} did not decode to a map")
         if decoded.get("version") != 2:
@@ -163,7 +174,42 @@ def parse_auctionator_file(path: Path, data: bytes | None = None) -> Auctionator
         markets[key] = decoded
     if not markets:
         raise ValueError("Auctionator file contains no serialized market databases")
-    return AuctionatorCapture(scan_timestamp, int(version_match.group(1)), markets)
+    return AuctionatorCapture(scan_timestamp, root['__dbversion'], markets)
+
+
+def select_auctionator_markets(markets, profile):
+    """Match inspected legacy, normalized-realm and regional ruleset keys.
+
+    Modern keys supply no faction or region. Never derive a ruleset from a
+    realm label, and never join different saved buckets into one price series.
+    """
+    selected, regional, skipped = {}, {}, []
+    known_realm = profile['realm'] != 'unknown'
+    normalized = lambda value: ''.join(value.split()).casefold()
+    rulesets = {'PvP': 'pvp', 'PvE': 'normal', 'RP': 'rp', 'HC': 'hardcore'}
+    for key in markets:
+        legacy = re.fullmatch(r'(.+) (Horde|Alliance|Neutral)', key)
+        if legacy and matches_profile(profile, realm=legacy.group(1), faction=legacy.group(2)):
+            selected[key] = (legacy.group(1), legacy.group(2), 'Legacy realm/faction key')
+        elif key in rulesets:
+            if known_realm and profile['ruleset'] == rulesets[key]:
+                regional[key] = (profile['realm'], 'unknown', 'Regional ruleset key matched to explicitly configured local_ruleset; source faction and region are unknown')
+            else:
+                skipped.append(key)
+        elif known_realm and normalized(key) == normalized(profile['realm']):
+            selected[key] = (profile['realm'], 'unknown', 'Normalized realm key matched to selected realm; source faction, ruleset and region are unknown')
+        else:
+            skipped.append(key)
+    # Auctionator switches to a regional bucket when regional unique names
+    # are enabled. An explicitly matching bucket supersedes old realm storage.
+    if regional:
+        skipped.extend(selected)
+        selected = regional
+    if len(selected) > 1:
+        raise ValueError('Auctionator contains multiple matching realms/factions and no per-market scan timestamp. Set local_realm and local_faction in config.json, or let a new AHledger scan identify this installation first. Existing evidence was retained.')
+    if not selected:
+        raise ValueError('No Auctionator market matches this installation. Set local_realm (or import an AHledger scan first); for regional PvP/PvE/RP keys also set local_ruleset explicitly. Saved keys: ' + ', '.join(markets))
+    return selected, skipped
 
 
 def discover_auctionator_files(configured: Iterable[str] = ()) -> list[Path]:
@@ -181,7 +227,7 @@ class AuctionatorSavedVariablesAdapter:
         supplies=("observed minimum unit prices", "daily low range", "observed available quantity"),
         needs=("separate raw-listing source for individual auctions and stack sizes",),
         documentation_url="https://www.curseforge.com/wow/addons/auctionator",
-        notes="Verified against Auctionator 339 database version 8. The addon stores aggregated prices, not raw listings.",
+        notes="Inspected Auctionator 339/340 database version 8, serialized and literal market tables. Modern realm/ruleset keys do not identify faction or region. The addon stores aggregated prices, not raw listings.",
     )
 
     def import_file(self, database: Database, path: Path) -> ImportResult:
@@ -207,22 +253,12 @@ class AuctionatorSavedVariablesAdapter:
             source_id = connection.execute(
                 "SELECT id FROM sources WHERE source_key='local-auctionator'"
             ).fetchone()["id"]
-            identities = {}
-            for raw_market in capture.markets:
-                # Inspected LegacyAH key: GetRealmName() + space + UnitFactionGroup().
-                identity = re.fullmatch(r"(.+) (Horde|Alliance|Neutral)", raw_market)
-                if not identity:
-                    raise ValueError('Unrecognized Auctionator realm/faction key; retaining existing evidence')
-                if matches_profile(market_profile(connection), realm=identity.group(1), faction=identity.group(2)):
-                    identities[raw_market] = identity
-                else:
-                    skipped += 1
-            if len(identities) > 1:
-                raise ValueError('Auctionator contains multiple matching realms/factions and no per-market scan timestamp. Set local_realm and local_faction in config.json, or let a new AHledger scan identify this installation first. Existing evidence was retained.')
+            identities, skipped_keys = select_auctionator_markets(capture.markets, market_profile(connection))
+            skipped = len(skipped_keys)
             for raw_market, identity in identities.items():
                 market_data = capture.markets[raw_market]
                 market_id = local_market(connection,source_id,scan_at,
-                    realm=identity.group(1), faction=identity.group(2))
+                    realm=identity[0], faction=identity[1])
                 market_count += 1
                 if reset_policy:
                     baseline = {r['item_key']:r['digest'] for r in connection.execute(
@@ -289,7 +325,7 @@ class AuctionatorSavedVariablesAdapter:
                             available_quantity=available.get(day_value),daily_low_copper=low,daily_high_low_copper=high))
                         record_count += 1
                 record_capture(connection,source_id,market_id,price_hash,None,imported,'daily_capture',history_points,
-                    doc_id,period=self.economic_period,limitations=[('Changed current prices after reset; unchanged old entries, daily ranges and quantities excluded. Per-item capture time unknown.' if reset_policy else 'Day-level addon summaries; per-item capture time unknown. Quantity is a daily observed high. Not independent individual scan rows.')])
+                    doc_id,period=self.economic_period,limitations=[identity[2], ('Changed current prices after reset; unchanged old entries, daily ranges and quantities excluded. Per-item capture time unknown.' if reset_policy else 'Day-level addon summaries; per-item capture time unknown. Quantity is a daily observed high. Not independent individual scan rows.')])
             connection.execute(
                 """INSERT INTO watched_files(path, adapter_key, last_modified_at, last_hash,
                 last_import_at, last_status, last_error) VALUES (?, ?, ?, ?, ?, 'complete', NULL)
@@ -304,8 +340,8 @@ class AuctionatorSavedVariablesAdapter:
                 (self.capability.key, source_id, imported, imported, path.name, record_count),
             )
             connection.execute('UPDATE sources SET notes=? WHERE id=?',
-                (f'Auctionator database version {capture.database_version}; aggregate price history. Latest file: {market_count} selected market(s), {skipped} other-market market(s) skipped.', source_id))
-        notes = ((f'Skipped {skipped} market(s) belonging to other realms/factions; use a separate installation for them.',) if skipped else ())
+                (f'Auctionator database version {capture.database_version}; aggregate price history. Latest file: {market_count} selected market(s). Skipped keys: {", ".join(skipped_keys) or "none"}. Regional PvP/PvE/RP keys require an explicitly selected local_ruleset; no faction or region is inferred.', source_id))
+        notes = ((f'Skipped unmatched saved keys: {", ".join(skipped_keys)}.',) if skipped else ())
         return ImportResult(self.capability.key, "local-auctionator", record_count, market_count, notes)
 
 
@@ -317,19 +353,29 @@ class AuctionatorWatcher:
         self.adapter = AuctionatorSavedVariablesAdapter()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._seen: dict[Path, tuple[int, int]] = {}
+        self._seen: dict[Path, tuple] = {}
+        self._failed: dict[Path, tuple[tuple, float]] = {}
 
     def scan_once(self) -> list[ImportResult]:
         imported: list[ImportResult] = []
+        with self.database.transaction() as connection:
+            profile_signature = tuple(market_profile(connection).values())
         for path in self.paths():
+            signature = None
             try:
                 stat = path.stat()
-                signature = (stat.st_mtime_ns, stat.st_size)
+                signature = (stat.st_mtime_ns, stat.st_size, profile_signature)
                 if self._seen.get(path) == signature:
+                    continue
+                failed = self._failed.get(path)
+                if failed and failed[0] == signature and time.monotonic() < failed[1]:
                     continue
                 imported.append(self.adapter.import_file(self.database, path))
                 self._seen[path] = signature
+                self._failed.pop(path, None)
             except Exception as exc:
+                if signature is not None:
+                    self._failed[path] = (signature, time.monotonic() + max(60, self.interval_seconds))
                 with self.database.transaction() as connection:
                     connection.execute(
                         """INSERT INTO watched_files(path, adapter_key, last_status, last_error)

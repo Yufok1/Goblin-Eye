@@ -9,7 +9,7 @@ dashboard, and commit the intended release first.
 npm ci --ignore-scripts
 npm run build
 .\python\python.exe scripts/build_release.py
-.\python\python.exe scripts/verify_release.py dist/Goblin-Eye-0.1.0-Windows.zip
+.\python\python.exe scripts/verify_release.py dist/Goblin-Eye-0.1.1-Windows.zip
 ```
 
 The builder first checks that the version in `src/goblin_eye/__init__.py`,
@@ -45,8 +45,8 @@ write`.
 For example, after the release commit is pushed and CI has passed:
 
 ```text
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 Enable private vulnerability reporting in repository settings. Keep GitHub
