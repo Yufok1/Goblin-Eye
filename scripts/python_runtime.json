@@ -1,0 +1,19 @@
+{
+  "version": "3.12.8",
+  "url": "https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip",
+  "sha256": "8d3f33be9eb810f23c102f08475af2854e50484b8e4e06275e937be61ce3d2fb",
+  "archive_bytes": 11094114,
+  "tree_sha256": "3bbf990c51246a1dfd26b70575833ea1baeccb8b3f77b8525d1ade479a9a8eb8",
+  "directory": "python",
+  "license": "PSF-2.0",
+  "license_url": "https://docs.python.org/3/license.html",
+  "source": "https://www.python.org/downloads/release/python-3128/",
+  "required_files": [
+    "python.exe",
+    "python312.dll",
+    "python312.zip",
+    "_sqlite3.pyd",
+    "sqlite3.dll"
+  ],
+  "notes": "Official Windows embeddable distribution. Vendored so a GitHub source download and the release ZIP both run without the player installing Python. Refresh with scripts/fetch_python.py, which verifies the archive hash before installing."
+}

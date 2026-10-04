@@ -26,6 +26,26 @@ The small zone-name and NPC-rank reference tables in
 file reference, retrieval timestamp and hash. These game display labels are
 reference metadata, not a live spawn database or part of the project's code license.
 
+## Bundled runtime
+
+The repository and the Windows ZIP include a **vendored Python runtime** in
+`python/`, so that a player can run Goblin Eye without installing an
+interpreter. It is the official CPython Windows embeddable distribution:
+
+| Component | Version | License |
+| --- | --- | --- |
+| CPython embeddable (amd64) | 3.12.8 | PSF-2.0 — https://docs.python.org/3/license.html |
+
+It is unmodified apart from `python312._pth`, which is rewritten to add this
+project's `src` directory, and `scripts/python_runtime.json`, which records the
+pinned upstream URL and SHA-256. `python/.goblin-eye-python.json` records the
+installed version and hash. `scripts/fetch_python.py --check` verifies that
+record, and `scripts/build_release.py` refuses to package a runtime that does not
+match the pin. No other Python distribution, package, or binary is bundled.
+
+## Development dependency
+
 TypeScript 5.9.2 (Apache-2.0) is a development dependency used to compile the
 project's dashboard. It is pinned in package-lock.json and is not shipped as a
-runtime dependency. Python and third-party WoW addons are installed separately.
+runtime dependency. The GitHub addon sources listed above are installed
+separately by the player.

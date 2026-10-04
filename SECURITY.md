@@ -5,6 +5,11 @@ it is not an authenticated internet-facing service. The read-only MCP endpoint
 exposes local evidence, and the optional companion endpoint can write goals and
 notes. Connect only clients you intend to give access to that information.
 
+The Windows ZIP bundles a Python runtime. It is the unmodified official CPython
+embeddable distribution, pinned by SHA-256 in `scripts/python_runtime.json`.
+Verify a downloaded copy with `python scripts/fetch_python.py --check` if you
+want to confirm the hash matches the pin.
+
 Do not put account identifiers, SavedVariables, databases, tokens, full logs or
 unredacted screenshots in public issues or pull requests. Bug reports should use
 minimal synthetic examples and sanitized error messages.

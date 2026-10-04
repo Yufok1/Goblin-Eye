@@ -10,9 +10,11 @@ $packageRoot = $PSScriptRoot
 Set-Location -LiteralPath $packageRoot
 $env:PYTHONPATH = Join-Path $packageRoot 'src'
 $env:PYTHONUNBUFFERED = '1'
-$pythonPath = Join-Path $packageRoot '.venv\Scripts\python.exe'
+# The ZIP bundles its own interpreter, so a player never installs Python. A source
+# checkout without the vendored tree falls back to an accessible system Python.
+$bundledPython = Join-Path $packageRoot 'python\python.exe'
 
-function Find-Python {
+function Find-SystemPython {
     # Check candidates rather than accepting the Windows Store execution alias.
     foreach ($candidate in @('py', 'python', 'python3')) {
         $command = Get-Command $candidate -ErrorAction SilentlyContinue
@@ -26,17 +28,21 @@ function Find-Python {
             }
         } catch { continue }
     }
-    throw 'Python 3.10 or newer is required. Install Python for Windows, then run this launcher again.'
+    return $null
 }
 
-if (-not (Test-Path -LiteralPath $pythonPath)) {
-    $installedPython = Find-Python
-    # The application uses the Python standard library: no pip downloads needed.
-    & $installedPython -m venv --without-pip (Join-Path $packageRoot '.venv')
-    if ($LASTEXITCODE -ne 0) { throw 'Could not create the local Python environment.' }
+if (Test-Path -LiteralPath $bundledPython) {
+    $pythonPath = $bundledPython
+} else {
+    $pythonPath = Find-SystemPython
+    if (-not $pythonPath) {
+        throw 'No Python runtime was found. Extract the complete Goblin Eye ZIP so the bundled python folder is present, or install Python 3.10 or newer.'
+    }
+    Write-Host 'Bundled runtime not found; using the Python already installed on this computer.'
 }
-& $pythonPath -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'
-if ($LASTEXITCODE -ne 0) { throw 'The local environment requires Python 3.10 or newer.' }
+
+& $pythonPath -c 'import sys, sqlite3; sys.exit(0 if sys.version_info >= (3, 10) else 1)'
+if ($LASTEXITCODE -ne 0) { throw 'Goblin Eye requires Python 3.10 or newer.' }
 
 if ($Mcp -or $ReadOnlyMcp) {
     # Stdio belongs to MCP. Do not emit setup messages or initialize a DB here.

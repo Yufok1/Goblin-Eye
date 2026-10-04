@@ -8,6 +8,8 @@ Initial public source preparation for the Windows edition.
 - One configurable local market profile per database; faction, ruleset, region
   and realm default to unknown and are never inferred from a realm name.
 - Read-only MCP plus optional bounded companion goals and notes.
+- A vendored, hash-pinned Python runtime, so neither the release ZIP nor a GitHub
+  source download requires the player to install Python.
 - Automatic imports for supported saved files, ProfessionDB, Forever Guide,
   QuestieDB and Mapzeroth; scheduled public AHledger and Blizzard reference refreshes.
 - Fixed Forever Guide's name-only dungeon quest handling and isolated catalog errors.

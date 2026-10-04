@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -24,7 +25,8 @@ ROOT_FILES = (
     "START-HERE.md", "config.example.json", "requirements.txt",
     "pyproject.toml", "package.json", "package-lock.json",
 )
-ROOT_TREES = ("src", "migrations", "docs", "web/src", "web/public", "web/dist")
+ROOT_TREES = ("src", "migrations", "docs", "python", "web/src", "web/public", "web/dist")
+VENDORED_ROOT = "python"
 # Matched anywhere in a relative path.
 EXCLUDED_PARTS = {
     "__pycache__", "node_modules", ".venv", "venv", ".git", ".github", ".idea",
@@ -42,6 +44,8 @@ REQUIRED_FILES = (
     "src/goblin_eye/ingestion/foreverguide_dungeons.py",
     "web/dist/assets/main.js",
     "migrations/001_initial.sql",
+    "python/python.exe",
+    "python/.goblin-eye-python.json",
 )
 
 # Absolute machine paths must never reach a public archive. These are structural
@@ -92,7 +96,9 @@ def collect() -> dict[str, bytes]:
             relative = path.relative_to(ROOT)
             if not path.is_file() or EXCLUDED_PARTS.intersection(relative.parts):
                 continue
-            if path.suffix.lower() in EXCLUDED_SUFFIXES or path.name.endswith(".egg-info"):
+            # The vendored interpreter legitimately ships .zip (the stdlib) and
+            # .pyd (extension modules); suffix filtering applies only to project files.
+            if tree != VENDORED_ROOT and (path.suffix.lower() in EXCLUDED_SUFFIXES or path.name.endswith(".egg-info")):
                 continue
             files[relative.as_posix()] = path.read_bytes()
     missing = [name for name in REQUIRED_FILES if name not in files]
@@ -109,6 +115,11 @@ def audit(files: dict[str, bytes]) -> None:
             raise SystemExit(f"Excluded path reached the archive: {name}")
         if Path(name).name in FORBIDDEN_NAMES or Path(name).parts[0] in FORBIDDEN_NAMES:
             raise SystemExit(f"Local or agent-local state reached the archive: {name}")
+        # The vendored interpreter is a hash-verified upstream artifact. Its
+        # binaries are not project text, so the text and privacy scans below
+        # would only produce false positives; the pinned SHA-256 is the guarantee.
+        if Path(name).parts[0] == VENDORED_ROOT:
+            continue
         for pattern, description in PRIVATE_PATTERNS:
             if pattern.search(body):
                 raise SystemExit(f"{description} found in {name}")
@@ -138,15 +149,27 @@ def write_member(archive: zipfile.ZipFile, name: str, body: bytes) -> None:
     archive.writestr(info, body, compresslevel=9)
 
 
+def verify_vendored_runtime() -> str:
+    """The bundled interpreter must match the pin before it can be packaged."""
+    check = subprocess.run([sys.executable, str(ROOT / "scripts" / "fetch_python.py"), "--check"],
+                           capture_output=True, text=True, timeout=300)
+    if check.returncode != 0:
+        raise SystemExit(f"The vendored Python runtime failed verification:\n{check.stdout}{check.stderr}")
+    pin = json.loads((ROOT / "scripts" / "python_runtime.json").read_text(encoding="utf-8"))
+    return f"Python {pin['version']} ({pin['license']}) bundled and hash-verified"
+
+
 def main() -> int:
     version = project_version()
+    runtime = verify_vendored_runtime()
     files = collect()
     audit(files)
     manifest = {
         "application": "Goblin Eye",
         "version": version,
-        "edition": "Windows source with prebuilt dashboard; neutral local market profile",
-        "requires": "Python >=3.10; Node.js and an AI subscription are not required to run",
+        "edition": "Windows source with prebuilt dashboard and bundled Python; neutral local market profile",
+        "requires": "Windows 10/11. Node.js and an AI subscription are not required to run",
+        "bundled_runtime": runtime,
         "personal_data_included": False,
         "third_party_addons_included": False,
         "files": {name: {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}

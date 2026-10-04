@@ -24,10 +24,9 @@ The ordinary `goblin-eye mcp` command remains read-only. `companion-mcp` adds `a
 CLI fallback:
 
 ```powershell
-$env:PYTHONPATH = Join-Path (Get-Location) 'src'
-.\.venv\Scripts\python.exe -m goblin_eye companion
-.\.venv\Scripts\python.exe -m goblin_eye companion-add goal "Prepare for a dungeon" "Research gear and quests before going"
-.\.venv\Scripts\python.exe -m goblin_eye companion-status 1 completed
+.\python\python.exe -m goblin_eye companion
+.\python\python.exe -m goblin_eye companion-add goal "Prepare for a dungeon" "Research gear and quests before going"
+.\python\python.exe -m goblin_eye companion-status 1 completed
 ```
 
 Read-only HTTP endpoints are `/api/companion/context`, `/api/companion/entries`, and `/api/companion/entries/{id}`. Dashboard writes use local JSON POST endpoints. They accept loopback clients only and reject cross-origin browser requests. The dashboard is not an account-authenticated remote service.

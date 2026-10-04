@@ -2,12 +2,14 @@
 
 ## Run the shared application
 
-- Windows with Windows PowerShell 5.1 or newer.
-- Python 3.10 or newer, accessible as `py`, `python`, or `python3`.
-- An extracted folder you can write to, for the local environment and database.
+- Windows 10 or Windows 11, with Windows PowerShell 5.1 or newer.
+- The extracted Goblin Eye folder, including its bundled `python` directory.
+- A folder you can write to, for the database.
 - A browser for the dashboard (default http://127.0.0.1:8765/).
 
-Need Python? Follow [INSTALL-PYTHON.md](INSTALL-PYTHON.md) before starting.
+**Python is bundled.** The ZIP ships a pinned, hash-verified Python 3.12 runtime
+and the launcher uses it automatically, so nothing has to be installed. See
+[INSTALL-PYTHON.md](INSTALL-PYTHON.md).
 
 Python runtime dependencies: **none outside the standard library**.
 `requirements.txt` intentionally has comments only. It is a valid pip
@@ -56,11 +58,17 @@ The dashboard binds to loopback by default; friends run their own copies.
 
 ## Development only
 
+- Python 3.10 or newer for running the tests. The launcher prefers the bundled
+  `python/` runtime and falls back to an accessible system Python when that
+  directory is absent, so a source checkout works either way.
 - Node.js/npm to install the pinned TypeScript compiler and rebuild web assets:
   `npm ci` then `npm run build`.
 - For an optional editable Python install: `python -m pip install -e .`.
   Its build backend requires setuptools >=68, as declared in pyproject.toml.
 - Full source-checkout tests: `python -m unittest discover -s tests -v`.
+- Runtime integrity: `python scripts/fetch_python.py --check` verifies the
+  vendored interpreter against its pinned archive hash without network access.
+  `python scripts/fetch_python.py` re-downloads the pinned upstream build.
   The share ZIP does not include test fixtures or developer tooling directories.
 
 These development steps are not part of your friends' normal setup.

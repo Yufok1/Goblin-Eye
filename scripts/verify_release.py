@@ -44,6 +44,39 @@ def default_archive() -> Path:
     return ROOT / "dist" / f"Goblin-Eye-{version}-Windows.zip"
 
 
+def interpreter(root: Path) -> str:
+    """Prefer the interpreter bundled in the archive over the verifier's own.
+
+    A player has no system Python, so the shipped interpreter is the only one
+    that matters. It is Windows-specific, so other hosts fall back to sys.executable.
+    """
+    bundled = root / "python" / "python.exe"
+    if os.name == "nt" and bundled.is_file():
+        return str(bundled)
+    return sys.executable
+
+
+def verify_bundled_runtime(root: Path) -> str:
+    """Prove the archive's own interpreter works before anything depends on it."""
+    exe = root / "python" / "python.exe"
+    stamp = root / "python" / ".goblin-eye-python.json"
+    if not exe.is_file():
+        fail("the archive does not contain the bundled python/python.exe")
+    if not stamp.is_file():
+        fail("the bundled runtime is not stamped with its pinned hash")
+    recorded = json.loads(stamp.read_text(encoding="utf-8"))
+    if not recorded.get("version") or len(str(recorded.get("sha256", ""))) != 64:
+        fail("the bundled runtime stamp does not record a version and archive hash")
+    # The stdlib lives in python312.zip and SQLite in _sqlite3.pyd. If either was
+    # dropped from the archive, this is where it shows up.
+    environment = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    probe = subprocess.run([str(exe), "-c", "import sqlite3, sys; print('%d.%d' % sys.version_info[:2])"],
+                           cwd=root, env=environment, capture_output=True, text=True, timeout=120)
+    if probe.returncode != 0:
+        fail(f"the bundled interpreter cannot start: {probe.stderr.strip()[:300]}")
+    return f"Python {probe.stdout.strip()} bundled, hash-stamped, sqlite3 available"
+
+
 def run(command: list[str], cwd: Path, **kwargs) -> subprocess.CompletedProcess:
     environment = dict(os.environ, PYTHONPATH=str(cwd / "src"), PYTHONUNBUFFERED="1")
     return subprocess.run(command, cwd=cwd, env=environment, capture_output=True, text=True, **kwargs)
@@ -95,11 +128,11 @@ def verify_manifest(root: Path) -> int:
     return len(manifest["files"])
 
 
-def verify_fresh_install(root: Path) -> int:
+def verify_fresh_install(root: Path, python: str) -> int:
     for stale in ("config.json", ".venv", "node_modules"):
         if (root / stale).exists():
             fail(f"fresh archive contains {stale}")
-    result = run([sys.executable, "-m", "goblin_eye", "init"], root, timeout=120)
+    result = run([python, "-m", "goblin_eye", "init"], root, timeout=180)
     if result.returncode != 0:
         fail(f"init failed: {result.stdout}{result.stderr}")
     if (root / "config.json").exists():
@@ -119,8 +152,8 @@ def verify_fresh_install(root: Path) -> int:
     return applied
 
 
-def verify_mcp(root: Path, command: str, expect_write_tool: bool) -> int:
-    result = run([sys.executable, "-m", "goblin_eye", command], root,
+def verify_mcp(root: Path, python: str, command: str, expect_write_tool: bool) -> int:
+    result = run([python, "-m", "goblin_eye", command], root,
                  input="".join(json.dumps(message) + "\n" for message in HANDSHAKE),
                  timeout=120)
     if result.returncode != 0:
@@ -156,8 +189,9 @@ def verify_windows_launchers(root: Path) -> None:
                             text=True, timeout=300)
     if result.returncode != 0:
         fail(f"Run-Goblin-Eye.ps1 -InitializeOnly failed: {result.stdout}{result.stderr}")
-    if not (root / ".venv/Scripts/python.exe").is_file():
-        fail("the launcher did not create its local Python environment")
+    # The launcher must use the bundled interpreter and must not build a venv.
+    if (root / ".venv").exists():
+        fail("the launcher created a .venv; the bundled runtime removes that step")
     settings = json.loads((root / "config.json").read_text(encoding="utf-8"))
     if not (settings.get("auto_import_questiedb") and settings.get("auto_import_mapzeroth")):
         fail("the launcher wrote a config.json without the automatic imports")
@@ -184,15 +218,19 @@ def verify_dashboard(root: Path) -> None:
 def main() -> int:
     archive_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else default_archive()
     root = extract(archive_path)
+    runtime = verify_bundled_runtime(root)
+    python = interpreter(root)
     manifest_files = verify_manifest(root)
-    migrations = verify_fresh_install(root)
+    migrations = verify_fresh_install(root, python)
     verify_dashboard(root)
-    tool_count = verify_mcp(root, "mcp", expect_write_tool=False)
-    companion_tools = verify_mcp(root, "companion-mcp", expect_write_tool=True)
+    tool_count = verify_mcp(root, python, "mcp", expect_write_tool=False)
+    companion_tools = verify_mcp(root, python, "companion-mcp", expect_write_tool=True)
     report = {
         "archive": archive_path.name,
         "archive_integrity": "passed",
         "manifest_files": manifest_files,
+        "bundled_runtime": runtime,
+        "interpreter_used": "bundled" if python != sys.executable else "host python (bundled runtime is Windows-only)",
         "fresh_install": "passed",
         "empty_personal_database": "passed",
         "migrations": migrations,

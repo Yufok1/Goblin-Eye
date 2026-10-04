@@ -19,6 +19,9 @@ venv/
 node_modules/
 __pycache__/
 *.py[cod]
+# The vendored interpreter's extension modules end in .pyd, which the rule above
+# would otherwise discard. Without them the bundled runtime cannot import sqlite3.
+!python/*.pyd
 *.egg-info/
 .pytest_cache/
 .coverage

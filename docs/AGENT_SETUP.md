@@ -55,10 +55,9 @@ local addon observations.
 Fallback from PowerShell in this folder:
 
 ```powershell
-$env:PYTHONPATH = Join-Path (Get-Location) 'src'
-.\.venv\Scripts\python.exe -m goblin_eye characters
-.\.venv\Scripts\python.exe -m goblin_eye sources
-.\.venv\Scripts\python.exe -m goblin_eye companion
+.\python\python.exe -m goblin_eye characters
+.\python\python.exe -m goblin_eye sources
+.\python\python.exe -m goblin_eye companion
 ```
 
 Local HTTP: `http://127.0.0.1:8765/api/characters`, `/api/sources`,

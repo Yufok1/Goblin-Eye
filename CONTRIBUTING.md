@@ -9,26 +9,43 @@ behalf. Tests use synthetic market profiles.
 
 ## Development setup
 
-Use Python 3.10+ and Node.js 22+ for development. Runtime Python code uses the
-standard library. From the repository root on PowerShell:
+Use the vendored interpreter in `python/` and Node.js 22+ for development. Runtime
+Python code uses the standard library. From the repository root on PowerShell:
 
 ```powershell
-py -3 -m venv .venv
-$env:PYTHONPATH = Join-Path (Get-Location) 'src'
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\python\python.exe -m unittest discover -s tests -v
 npm ci --ignore-scripts
 npm run build
+py -3 scripts\fetch_python.py --check
 ```
 
-On Linux/macOS, the equivalent test command is
-`PYTHONPATH=src python3 -m unittest discover -s tests -v`. The Windows launchers
-are the supported installation route. A development editable install is optional;
-a pip wheel alone is not a supported end-user distribution because migrations
-and dashboard assets live alongside the source checkout.
+On Linux/macOS, use `python3 -m unittest discover -s tests -v` with
+`PYTHONPATH=src`; the bundled runtime is Windows-only. The Windows launchers are
+the supported installation route. A development editable install is optional; a
+pip wheel alone is not a supported end-user distribution because migrations and
+dashboard assets live alongside the source checkout.
 
-Commit regenerated `web/dist` assets when changing `web/src`. CI rebuilds the
-dashboard and checks that the committed output matches. Use synthetic fixtures
-in tests; keep test discovery isolated from the developer's installed addons.
+Commit regenerated `web/dist` assets when changing `web/src`, and commit the
+vendored `python/` runtime. CI rebuilds the dashboard and checks that the
+committed output matches. Use synthetic fixtures in tests; keep test discovery
+isolated from the developer's installed addons.
+
+## Vendored Python runtime
+
+`python/` holds the official CPython Windows embeddable distribution, pinned by
+version, URL and SHA-256 in `scripts/python_runtime.json`. It is committed so a
+GitHub source download runs without the player installing Python, on the same
+principle as the committed `web/dist`.
+
+- `python scripts/fetch_python.py --check` verifies the installed runtime
+  offline. Run it in CI-style checks before packaging.
+- `python scripts/fetch_python.py` re-downloads the pinned upstream build.
+- To move to a new Python release, update the pin first, then re-run the fetch
+  script, then commit the resulting `python/` directory and the changed pin.
+- Do not hand-edit files under `python/`, and do not relax the hash check. The
+  build refuses to package an interpreter that does not match the pin.
+- `Run-Goblin-Eye.ps1` prefers `python/python.exe` and falls back to an
+  accessible system Python only when that directory is absent.
 
 ## Changes and evidence
 

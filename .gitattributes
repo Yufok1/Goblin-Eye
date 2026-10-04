@@ -3,3 +3,7 @@
 *.ps1 text eol=crlf
 *.png binary
 *.zip binary
+
+# The vendored interpreter is a hash-verified upstream artifact. Store every file
+# in it verbatim, including python312._pth, which must keep LF line endings.
+python/** binary

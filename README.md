@@ -12,14 +12,17 @@ markets are shown separately.
 
 ## 1. Start Goblin Eye
 
-1. **Install Python 3.10 or newer** if needed. Follow the short
-   [Python installation guide](INSTALL-PYTHON.md).
-2. **Right-click the Goblin Eye ZIP → Extract All.** Choose a writable location,
-   such as Documents. Open the extracted `Goblin-Eye` folder.
-3. **Double-click `Start-Goblin-Eye.cmd`.** It prepares everything on the first
+1. **Right-click the Goblin Eye ZIP → Extract All.** Choose a writable location,
+   such as Documents. Open the extracted `Goblin-Eye` folder. Extract the whole
+   ZIP: the `python` folder inside it is the bundled runtime.
+2. **Double-click `Start-Goblin-Eye.cmd`.** It prepares everything on the first
    run, then opens the dashboard. Keep its console window open while using it.
-4. If the browser does not open, visit **http://127.0.0.1:8765/**. If the page opens
+3. If the browser does not open, visit **http://127.0.0.1:8765/**. If the page opens
    before startup finishes, refresh it once the console says the server is running.
+
+**There is nothing to install.** Python is bundled in the ZIP, so you do not need
+to install Python, Node.js, npm, pip packages, an API key, or an AI subscription,
+and you do not need administrator access. Your database starts empty.
 
 Use the launcher **inside the extracted folder every time**. From PowerShell in
 that folder, the equivalent is:
@@ -32,9 +35,7 @@ The bare command `goblin-eye serve` can point to a different, previously install
 copy even when your terminal is in the correct folder. The included launcher
 always selects this copy.
 
-Goblin Eye stays in its own folder, outside WoW's AddOns folder. The ZIP includes
-the ready-to-use dashboard; you do not need Node.js, npm, pip setup, an API key,
-or administrator access. Your database starts empty.
+Goblin Eye stays in its own folder, outside WoW's AddOns folder.
 
 ## 2. Install the addons through CurseForge
 
@@ -122,14 +123,14 @@ and static spawn references do not show live mob availability.
 
 | Symptom | What to do |
 | --- | --- |
-| Python is missing | Follow [Install Python](INSTALL-PYTHON.md), then reopen the launcher. |
+| `python\python.exe` is missing | Extract the **complete** ZIP. The `python` folder is the bundled runtime and must stay inside the Goblin Eye folder. See [Python is already included](INSTALL-PYTHON.md). |
 | `Unknown configuration keys` after `goblin-eye serve` | Launch `Start-Goblin-Eye.cmd` from this extracted folder. An old global command may be selecting an older copy. Keep the new configuration keys. |
 | Port already in use | Open http://127.0.0.1:8765/ first; Goblin Eye may already be running. Use one server at a time. |
 | Character or scans are empty | Confirm the addons are enabled, finish the capture/scan, then `/reload` in WoW. Check Source health for an import error. |
 | Questie data is missing | Confirm `QuestieDB` is installed alongside `Questie`, including its Forever `.toc` file. |
 | Static data is missing | Check the Forever addon version, installation folder, and Source health. Allow the first import to finish. |
 | WoW is installed in a custom location | Follow [Custom install paths](docs/CUSTOM_PATHS.md). Discovery currently checks common C: and D: locations for `_classic_beta_`. |
-| You moved the extracted folder and Python no longer starts | Close Goblin Eye. Remove only its `.venv` folder, then run its launcher to recreate it. Keep `data` and `config.json`. |
+| You moved the extracted folder and it will not start | There is no environment to clean up any more. Put the whole folder back together, or extract the ZIP again somewhere writable, then run `Start-Goblin-Eye.cmd`. Keep `data` and `config.json` if you want your evidence. |
 | Updating an existing copy | Extract the new ZIP separately. Stop Goblin Eye, back up your old `data` folder and `config.json`, then copy them into the new folder before launching it. |
 
 Every friend gets their own database. Keep their data and settings separate.

@@ -49,8 +49,8 @@ catalogs fail independently; name-only quest placeholders stay in cached source
 coverage rather than becoming fabricated numeric quest IDs. Source health
 includes active world entity, travel node and travel edge counts.
 
-For CLI fallback, set PYTHONPATH to src in the extracted folder and use
-`.venv\Scripts\python.exe -m goblin_eye` followed by `characters`, `sources`,
+For CLI fallback, open PowerShell in the extracted folder and use the bundled
+`python\python.exe -m goblin_eye` followed by `characters`, `sources`,
 `observations`, `companion`, or `research TOOL --arguments-file FILE.json`.
 The local API supplies /api/health, /api/characters, /api/sources, /api/items,
 /api/world-search, /api/acquisition-search, /api/scan-summary, and history.

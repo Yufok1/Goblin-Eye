@@ -1,54 +1,61 @@
-# Install Python on Windows
+# Python is already included
 
-Goblin Eye requires Python 3.10 or newer. Its requirements.txt does not install
-Python. These instructions are for Windows 10/11.
+**You do not need to install Python.** The Goblin Eye ZIP ships its own Python
+runtime in a `python` folder next to the application.
 
-## Check first
+Nothing to download, nothing to install, no administrator access, no changes to
+your system. Extract the ZIP and run `Start-Goblin-Eye.cmd`.
 
-Open Start, type **PowerShell**, and open it. Run:
+## What is in the folder
 
-```powershell
-py -3 --version
+```
+Goblin-Eye/
+  python/        <- bundled Python 3.12 runtime; do not move or rename it
+  src/           <- Goblin Eye source
+  migrations/    <- database migrations
+  web/           <- prebuilt dashboard
+  Start-Goblin-Eye.cmd
 ```
 
-If you see Python 3.10 or a newer 3.x version, skip installation and continue
-with START-HERE.md. If `py` is unavailable, also try `python --version`.
+The launcher uses `python\python.exe` automatically. Keep the `python` folder
+inside the Goblin Eye folder; moving `src` or `python` on its own will break the
+launcher.
 
-## Install from Python.org
+## Requirements
 
-1. Open the official [Python Windows downloads page](https://www.python.org/downloads/windows/).
-2. Download the **Python install manager**. Open the downloaded file and select
-   **Install**. Follow any configuration prompts.
-3. Open a new PowerShell window and install the default stable Python runtime:
+- Windows 10 or Windows 11
+- A writable folder to extract into
+- A browser
 
-   ```powershell
-   pymanager install default
-   ```
+That is the complete list. Node.js, npm, pip, an AI subscription, and an API key
+are all optional or unnecessary.
 
-4. Confirm the runtime is available:
+## If you want to update Python yourself
 
-   ```powershell
-   py -3 --version
-   ```
+You do not need to. The bundled runtime is pinned and hash-verified. If you are
+checking or refreshing it as a developer, run:
 
-The install manager installs and manages Python runtimes; downloading the
-manager alone is not the same as installing the runtime. The explicit install
-command above handles that step. Python's official documentation describes
-the [Windows installation process](https://docs.python.org/3/using/windows.html).
+```powershell
+py -3 scripts\fetch_python.py --check
+py -3 scripts\fetch_python.py
+```
 
-## Start Goblin Eye
+The first command verifies the installed runtime against the pinned archive hash
+without network access. The second re-downloads the pinned upstream build.
 
-Extract the entire Goblin Eye ZIP, then double-click **Start-Goblin-Eye.cmd**.
-It creates a local Python environment and initializes the database. No pip
-packages are required. AI setup is optional; get the dashboard working first.
+## If you prefer to use your own Python
 
-## If commands are not recognized
+The launcher falls back to any accessible Python 3.10 or newer if the bundled
+`python` folder is absent. This is intended for development checkouts. Some
+players find it useful to keep a system Python for scripting.
 
-Close and reopen PowerShell after installation. If commands still fail, use
-the [official Windows troubleshooting guide](https://docs.python.org/3/using/windows.html#troubleshooting).
-An older `py` launcher may conflict with the new manager; `pymanager` is the
-manager-specific command. Do not uninstall an existing working Python just
-to use Goblin Eye: any accessible Python 3.10+ is sufficient.
+## Why a bundled runtime
 
-Python itself is not bundled in the Goblin Eye ZIP. Initial downloads require
-internet access; Goblin Eye's launcher uses the Python already installed.
+Windows does not ship Python, and asking every player to install an interpreter
+before they can look at a dashboard is the single largest setup barrier. A
+portable runtime keeps Goblin Eye a one-double-click install with no system
+modification, and it works offline.
+
+The bundled build is the official Python embeddable distribution. It is
+redistributed under the Python Software Foundation license; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
