@@ -39,6 +39,18 @@ Your realm, faction, region and ruleset remain the dashboard's market settings.
 
 ## Chat controls
 
+**Stop**, directly below Send, cancels the selected chat's running or queued AI
+request and preserves your draft. Other chats keep running. `/wow-ai stop` and
+`/wow-ai cancel` do the same thing. The next message starts a fresh agent session;
+displayed history stays available. Stop cannot undo a tool action already completed.
+In reload mode, click Reload to receive confirmation before sending the next draft.
+
+Normal bridge startup never executes an old saved prompt. Accepted requests are
+recorded before an agent launches; interrupted requests return a stopped notice
+after a restart. Send a new message yourself to continue. Starting the bridge or
+logging in does not resume that instruction. Explicit developer `--once`/`--inject`
+commands remain available for deliberate test requests.
+
 Use **Chat settings** to select an agent and request its current model catalog.
 Catalogs are discovered from supported installed CLIs and cached for five minutes;
 refresh to request a new list. Unsupported/unavailable discovery does not invent

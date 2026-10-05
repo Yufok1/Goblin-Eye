@@ -100,6 +100,57 @@ function connect(vm) {
   assert.equal(vm.evaluate('WoWAI.IsConnected()'), 'true', 'connected after the hello slot');
 }
 
+test('Stop emits a cancellation control, preserves drafts and ignores the old reply', () => {
+  const vm = newVM(); login(vm); connect(vm);
+  const button = () => vm.evaluate('(function() for _,f in ipairs(STUB.frames) do if f.text=="Stop" then return f.enabled end end end)()');
+  assert.equal(button(), 'false');
+  vm.run('WoWAI.Send("old request"); WoWAIInput:SetText("my next question")');
+  const oldId = vm.num('WoWAIDB.chats[1].pendingId');
+  const chat = vm.evaluate('WoWAIDB.chats[1].id');
+  assert.equal(button(), 'true');
+  vm.run('for _,f in ipairs(STUB.frames) do if f.text=="Stop" then f.scripts.OnClick(f);break end end');
+  const control = stripRecords(vm).find(r => r.flags === 'cancel=' + oldId);
+  assert.ok(control); assert.equal(control.text, '');
+  assert.equal(vm.evaluate('WoWAIDB.chats[1].pendingId'), null);
+  assert.equal(vm.evaluate('WoWAIInput.text'), 'my next question');
+  assert.equal(button(), 'false');
+  vm.run('WoWAI.SendFromInput()');
+  const newId = vm.num('WoWAIDB.chats[1].pendingId');
+  assert.ok(newId > control.id);
+  assert.ok(stripRecords(vm).find(r => r.id === newId).flags.split(';').includes('n'));
+  nextSlot(vm, `{ now=time(), replies={{chat="${chat}",id=${oldId},status="done",text="STALE REPLY"}}, control_acks={{session="${control.session}",id=${control.id}}} }`);
+  vm.run('STUB.now=STUB.now+3; STUB.Tick()');
+  assert.equal(vm.num('WoWAIDB.chats[1].pendingId'), newId);
+  assert.equal(vm.evaluate(`WoWAIDB.stops["${chat}"]`), null);
+  assert.equal(vm.evaluate('WoWAIDB.chats[1].history[#WoWAIDB.chats[1].history].text'), 'my next question');
+});
+
+test('interrupted status releases pending UI and reload cancellation survives until confirmation', () => {
+  const vm=newVM();login(vm);connect(vm);vm.run('WoWAI.Send("interrupted")');
+  const id=vm.num('WoWAIDB.chats[1].pendingId'),chat=vm.evaluate('WoWAIDB.chats[1].id');
+  nextSlot(vm,`{now=time(),replies={{chat="${chat}",id=${id},status="stopped",text="Bridge restarted; send a new message."}}}`);
+  vm.run('STUB.now=STUB.now+10;STUB.Tick()');
+  assert.equal(vm.evaluate('WoWAIDB.chats[1].pendingId'),null);
+  assert.equal(vm.evaluate('WoWAIDB.outbox'),null);
+  assert.equal(vm.evaluate('WoWAIDB.chats[1].resetNext'),'true');
+  vm.run('WoWAIDB.settings.mode="reload";WoWAI.Send("long run");SlashCmdList.WOWAI("stop")');
+  const control=vm.num('WoWAIDB.outbox.id');
+  assert.ok(vm.num('WoWAIDB.outbox.cancel')>id);
+  vm.run('WoWAI.Send("new draft")');
+  assert.equal(vm.num('WoWAIDB.outbox.id'),control,'draft must not overwrite the unconfirmed stop');
+  vm.run(`WoWAI_Inbox={now=time(),replies={},control_acks={{session=WoWAIDB.session,id=${control}}}};STUB.FireEvent("PLAYER_LOGIN")`);
+  assert.equal(vm.evaluate(`WoWAIDB.stops["${chat}"]`),null);
+  assert.equal(vm.evaluate('WoWAIDB.outbox'),null);
+  assert.equal(vm.evaluate('WoWAIInput.text'),'new draft');
+});
+
+test('Stop cancels a message waiting for connection before it can auto-send', () => {
+ const vm=newVM();login(vm);vm.run('WoWAI.Send("do not send this");WoWAI.Stop()');
+ nextSlot(vm,'{now=time(),replies={}}');vm.run('STUB.now=STUB.now+6;STUB.Tick()');
+ assert.equal(vm.evaluate('WoWAIDB.chats[1].pendingId'),null);
+ assert.equal(vm.evaluate('WoWAIInput.text'),'do not send this');
+});
+
 test('settings fetch dynamic models, select an exact CLI ID and reasoning choice, and retain pending-send choices',()=>{
  const vm=newVM();vm.run('WoWAI_Inbox.agent="kilo";WoWAI_Inbox.agents={"claude","codex","kilo","grok","agy","hermes"}');login(vm);connect(vm);vm.run('WoWAI.SetAgent("kilo");WoWAI.ShowChatSettings()');
  const request=stripRecords(vm).find(r=>r.flags==='models');assert.ok(request);assert.equal(JSON.parse(request.text).agent,'kilo');assert.equal(vm.evaluate('WoWAIDB.chats[1].pendingId'),null);

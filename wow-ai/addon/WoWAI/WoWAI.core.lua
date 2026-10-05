@@ -224,6 +224,7 @@ local function InitDB()
 	db.lastSeq = db.lastSeq or 0
 	-- Chats deleted in game that the bridge hasn't confirmed forgetting yet.
 	db.forget = db.forget or {}
+	db.stops = db.stops or {}
 	-- Identifies this counter's lifetime. If the saved data is ever reset, a new
 	-- session lets the bridge tell "message #1 again" from "message #1, already done".
 	if not db.session then
@@ -699,6 +700,9 @@ local function ApplyReplies(replies)
 				Finish(c, "assistant", r.text or "", denied, r.agent, r.summary, WoWAI.CleanMacros(r.macros), r.research or c.liveResearch, r.resources, r.speech_key)
 			elseif r.status == "error" then
 				Finish(c, "system", "Bridge error: " .. tostring(r.text), denied, r.agent, nil, nil, r.research or c.liveResearch, r.resources)
+			elseif r.status == "stopped" then
+				c.resetNext = true
+				Finish(c, "system", r.text or "Stopped. Send a new message to continue.", nil, r.agent, nil, nil, r.research or c.liveResearch)
 			elseif r.status == "working" then
 				c.progress = r.text
 				if type(r.research) == "table" then c.liveResearch = r.research end
@@ -706,6 +710,22 @@ local function ApplyReplies(replies)
 		end
 	end
 	return matched
+end
+
+local function ApplyControlAcks(data)
+	for _, a in ipairs(data.control_acks or {}) do
+		if a.session == db.session then
+			local rec = run.outbound[a.id]
+			if rec and (rec.models or rec.cancel) then
+				MarkAcked(a.id)
+				if rec.models then run.modelsPollAt = nil end
+			end
+			for chatId, stop in pairs(db.stops) do
+				if stop.id == a.id then db.stops[chatId] = nil end
+			end
+			if db.outbox and db.outbox.id == a.id and db.outbox.cancel then db.outbox = nil end
+		end
+	end
 end
 
 -- The bridge keeps every chat's transcript. After the client wipes our saved data,
@@ -795,10 +815,7 @@ local function TryLoadSlot(why)
 			local rec = run.outbound[a.id]
 			if a.session == db.session and rec and rec.voice then MarkAcked(a.id); run.voicePollAt = nil end
 		end
-		for _, a in ipairs(data.control_acks or {}) do
-			local rec = run.outbound[a.id]
-			if a.session == db.session and rec and rec.models then MarkAcked(a.id); run.modelsPollAt = nil end
-		end
+		ApplyControlAcks(data)
 	end
 	if type(data) == "table" and data.restore then ImportRestore(data.restore) end
 	if type(data) == "table" and data.map and WoWAIMap then WoWAIMap.Sync(data.map) end
@@ -831,6 +848,8 @@ local function Tick()
 		run.nextVoiceStatusPoll = now + 5; TryLoadSlot("voice-status")
 	elseif run.speech and not run.speech.busy and not run.speech.warming then run.nextVoiceStatusPoll = nil end
 	if run.modelsPollAt and now >= run.modelsPollAt then run.modelsPollAt = nil; TryLoadSlot("models") end
+	if run.stopPollAt and now >= run.stopPollAt then run.stopPollAt = now + 3; TryLoadSlot("stop") end
+	if not next(db.stops) then run.stopPollAt = nil end
 	if run.modelsRefresh then run.modelsRefresh = nil; TryLoadSlot("models") end
 	local changed = false
 	if run.helloPollAt and now >= run.helloPollAt then
@@ -851,6 +870,7 @@ local function Tick()
 			NoteAcked(rec)
 			if rec.voice then run.voiceRefresh = true end
 			if rec.models then run.modelsRefresh = true; run.modelsPollAt = nil end
+			if rec.cancel then run.stopPollAt = now end
 			if rec.voice then run.voicePollAt = nil end
 			changed = true
 			NotedBridge()
@@ -919,6 +939,7 @@ local function ProcessInbox()
 	if type(inbox.agents) == "table" and #inbox.agents > 0 then run.bridgeAgents = inbox.agents end
 	if type(inbox.speech) == "table" then run.speech = inbox.speech end
 	if type(inbox.model_catalogs) == "table" then run.catalogs = inbox.model_catalogs end
+	ApplyControlAcks(inbox)
 	ApplyReplies(inbox.replies)
 	if inbox.restore then ImportRestore(inbox.restore) end
 	if inbox.map and WoWAIMap then WoWAIMap.Sync(inbox.map) end
@@ -926,10 +947,13 @@ end
 
 Finish = function(chat, role, text, denied, agent, summary, macros, research, resources, speechKey)
 	AddHistory(chat, role, text, chat.pendingId, denied, agent, macros, research, resources)
+	if db.outbox and db.outbox.id == chat.pendingId then db.outbox = nil end
+	if chat.pendingId then run.outbound[chat.pendingId] = nil end
 	if role == "assistant" then chat.history[#chat.history].speech_key = speechKey end
 	chat.pendingId = nil
 	chat.progress = nil
 	chat.liveResearch, chat.pendingResearchView = nil, nil
+	RefreshStrip()
 	if run.act then run.act[chat.id] = nil end
 	NotedBridge()
 	local visible = ui.frame and ui.frame:IsShown() and db.activeChat == chat.id
@@ -1215,6 +1239,11 @@ function WoWAI.Send(text, allow)
 	local c = ActiveChat()
 	if not c then return end
 	text = Trim(text or "")
+	if db.settings.mode == "reload" and db.stops[c.id] then
+		if text ~= "" then c.draft = text; if ui.input then ui.input:SetText(text) end end
+		print("WoWAI: Stop is awaiting bridge confirmation. Keep your draft and click Reload to check, then Send.")
+		return
+	end
 	if c.pendingId then
 		-- Typing while waiting: keep the draft, and check for the reply.
 		if text ~= "" then c.draft = text end
@@ -1307,6 +1336,36 @@ function WoWAI.Send(text, allow)
 	end
 end
 
+-- Cancellation is a transport control, never a model instruction. Keep the
+-- request until acknowledgement so /reload cannot accidentally resurrect it.
+function WoWAI.Stop()
+	local c = ActiveChat()
+	if not c then return end
+	if run.sendOnConnect and run.sendOnConnect.chat == c.id then
+		run.sendOnConnect = nil
+		WoWAI.UpdateStatus()
+	end
+	local target = c.pendingId
+	if not target then return end
+	db.lastSeq = db.lastSeq + 1
+	local id = db.lastSeq
+	db.stops[c.id] = { id = id, target = target }
+	run.outbound[target] = nil
+	run.outbound[id] = { chat=c.id, cwd=c.cwd, flags="cancel=" .. target, name=c.name, text="", cancel=target, sentAt=GetTime() }
+	db.outbox = { id=id, session=db.session, chat=c.id, cwd=ToHex(c.cwd or ""), text="", cancel=target }
+	AddHistory(c, "system", "Stop requested for #" .. target .. ". You can write your next message.", target)
+	c.pendingId, c.progress, c.liveResearch, c.pendingResearchView = nil, nil, nil, nil
+	c.resetNext = true
+	if run.act then run.act[c.id] = nil end
+	if not AnyPending() then keyCatcher:Hide() end
+	if ui.input and c.draft and Trim(ui.input:GetText()) == "" then ui.input:SetText(c.draft) end
+	c.draft = nil
+	run.stopPollAt = GetTime() + 1
+	RefreshStrip()
+	WoWAI.Render()
+	if db.settings.mode == "reload" then SafeReload() end
+end
+
 -- Forget: a record with no text telling the bridge a chat was deleted, so it drops
 -- the transcript (which a later restore would otherwise bring back) and the
 -- agent session. db.forget keeps the id until the bridge acks, so a delete made
@@ -1386,6 +1445,11 @@ function WoWAI.SayHello()
 	run.helloPollAt = now + 5
 	-- Deletions the bridge never confirmed ride along with the hello.
 	for id in pairs(db.forget) do SendForget(id) end
+	for chatId, stop in pairs(db.stops) do
+		local ch = FindChat(chatId)
+		run.outbound[stop.id] = { chat=chatId, cwd=ch and ch.cwd or "", flags="cancel=" .. stop.target, name=ch and ch.name or "", text="", cancel=stop.target, sentAt=now }
+		run.stopPollAt = now + 1
+	end
 	-- Fresh saved data: show "restoring" instead of an empty panel until we hear back.
 	if not db.restored then
 		local empty = true
@@ -1907,6 +1971,8 @@ function WoWAI.UpdateStatus()
 		else
 			s = "Not connected - start the bridge, then click Connect"
 		end
+	elseif c and db.stops[c.id] then
+		s = "Stop requested - waiting for bridge confirmation. Your next message can be drafted now"
 	elseif c and c.draft and c.draft ~= "" then
 		s = "Reply arrived. Your draft is back in the box - Enter to send it"
 	elseif run.restoring then
@@ -1943,6 +2009,7 @@ function WoWAI.UpdateStatus()
 	end
 	ui.cwd:SetText("cwd: " .. cwdText .. "   agent: " .. agentText .. "   mode: " .. mode .. "   reply slots used: " .. (run.slotsUsed or 0) .. "/" .. SLOT_COUNT)
 	if ui.resend then ui.resend:SetShown(c and c.pendingId ~= nil and mode == "pixel") end
+	if ui.stop then ui.stop:SetEnabled(c ~= nil and (c.pendingId ~= nil or (run.sendOnConnect ~= nil and run.sendOnConnect.chat == c.id))) end
 	if ui.refresh then ui.refresh:SetShown(mode ~= "pixel" or run.slotsExhausted or run.slotsMissing or run.pixelFailed or false) end
 	WoWAI.UpdateMini()
 end
@@ -2756,16 +2823,27 @@ local function BuildUI()
 	inputBg:SetScript("OnMouseDown", function() input:SetFocus() end)
 	ui.input = input
 
-	-- Send sits to the right of the input box, vertically centred on it.
+	-- Send and Stop share the right side of the composer.
 	local send = MakeButton(f, "Send", SEND_W, WoWAI.SendFromInput)
-	send:SetHeight(30)
-	send:SetPoint("LEFT", inputBg, "RIGHT", 6, 0)
+	send:SetHeight(25)
+	send:SetPoint("TOPLEFT", inputBg, "TOPRIGHT", 6, 0)
 	ui.send = send
+	local stop = MakeButton(f, "Stop", SEND_W, WoWAI.Stop)
+	stop:SetHeight(25)
+	stop:SetPoint("TOPLEFT", send, "BOTTOMLEFT", 0, -4)
+	stop:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("Stop this chat's AI")
+		GameTooltip:AddLine("Cancels its running or queued request. Other chats keep running. You can edit your next message; Stop cannot undo actions already completed.", 0.8, 0.8, 0.8, true)
+		GameTooltip:Show()
+	end)
+	stop:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	ui.stop = stop
 
 	-- Connect stands in for Send until the bridge has been seen (see UpdateConnect).
 	local connect = MakeButton(f, "Connect", SEND_W, WoWAI.Connect)
-	connect:SetHeight(30)
-	connect:SetPoint("LEFT", inputBg, "RIGHT", 6, 0)
+	connect:SetHeight(25)
+	connect:SetPoint("TOPLEFT", inputBg, "TOPRIGHT", 6, 0)
 	connect:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:SetText("Connect to the bridge")
@@ -2976,7 +3054,7 @@ local HELP = table.concat({
 	"/wow-ai mode reload            fallback transport: a /reload per step",
 	"/wow-ai resend                 show the strip again if the bridge missed it",
 	"/wow-ai reload                 reload now (also frees the slot pool)",
-	"/wow-ai cancel                 stop waiting on this chat's reply",
+	"/wow-ai stop                   cancel this chat's running/queued AI request (cancel is an alias)",
 	"/wow-ai copy                   open the last reply in a selectable box for Ctrl+C",
 	"/wow-ai macro undo             undo the last macro the agent's button created or changed",
 	"/wow-ai bind <key>             hotkey: checks for a reply while waiting, else toggles the window",
@@ -3008,7 +3086,7 @@ end
 
 local COMMAND_ARGS = {
 	mini = 0, min = 0, hide = 0, quit = 0, help = 0, clear = 0, delete = 0, reset = 0, copy = 0,
-	cancel = 0, resend = 0, reload = 0, refresh = 0, slots = 0, diag = 0,
+	cancel = 0, stop = 0, resend = 0, reload = 0, refresh = 0, slots = 0, diag = 0,
 	context = { [""] = true, on = true, off = true }, ctx = { [""] = true, on = true, off = true },
 	mode = { [""] = true, pixel = true, reload = true },
 	signal = { [""] = true, on = true, off = true }, longchat = { [""] = true, on = true, off = true },
@@ -3217,17 +3295,8 @@ SlashCmdList["WOWAI"] = function(msg)
 		AddHistory(c, "system", "Diagnostics:\n" .. table.concat(lines, "\n"))
 		WoWAI.Render()
 		WoWAI.Toggle(true)
-	elseif cmd == "cancel" then
-		if c.pendingId then
-			AddHistory(c, "system", "Gave up waiting on #" .. c.pendingId)
-			run.outbound[c.pendingId] = nil
-			if run.act then run.act[c.id] = nil end
-			c.pendingId = nil
-			c.progress = nil
-			RefreshStrip()
-			if not AnyPending() then keyCatcher:Hide() end
-		end
-		WoWAI.Render()
+	elseif cmd == "cancel" or cmd == "stop" then
+		WoWAI.Stop()
 	elseif cmd == "clear" then
 		wipe(c.history)
 		WoWAI.Render()

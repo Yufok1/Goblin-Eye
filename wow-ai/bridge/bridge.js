@@ -123,6 +123,7 @@ const SAVED_VARS = String(cfg.savedVariablesFile || '').replace(/WoWClaude\.lua$
 let state = readJson(STATE_FILE, { lastId: 0, sessions: {}, handled: {} });
 if (!state.handled) state.handled = {};
 if (!state.sessions) state.sessions = {};
+if (!state.pending) state.pending = {};
 // Older versions stored handled[session] as "highest id so far"; expand to a map.
 for (const [k, v] of Object.entries(state.handled)) {
   if (typeof v === 'number') {
@@ -243,12 +244,16 @@ function atomicWrite(file, content) {
 // Stop a run and whatever it spawned (an npm launcher runs the real binary as a
 // child of its own; on Windows a plain kill would leave that one going).
 function killTree(child) {
+  if (!child || !child.pid) return;
   if (process.platform === 'win32') {
     try {
       const k = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
       k.on('error', () => { try { child.kill(); } catch {} });
       return;
     } catch {}
+  }
+  if (process.platform !== 'win32') {
+    try { process.kill(-child.pid, 'SIGKILL'); return; } catch {}
   }
   try { child.kill(); } catch {}
 }
@@ -465,7 +470,45 @@ function allowRules(agentId, rules) {
 // ---------------------------------------------------------------------------
 
 let voiceControlPending = false;
+function rememberPending(job) {
+  // Persist acceptance before queueing/spawning. A power loss must never turn
+  // an accepted request back into a new instruction on the next startup.
+  markHandled(job);
+  state.pending[`${chatKey(job)}:${job.id}`] = { id:job.id, session:job.session, chat:job.chat, cwd:job.cwd, agent:job.agent, startedAt:job.startedAt };
+  saveState();
+}
+
+function cancelJobs(control) {
+  if (!Number.isSafeInteger(control.cancel) || control.cancel < 1 || control.cancel >= control.id) return;
+  if (controlAcks.some(a => a.session === control.session && a.id === control.id)) return;
+  const key = chatKey(control);
+  markHandled(control);
+  state.cancelledThrough = state.cancelledThrough || {};
+  const previousCutoff = state.cancelledThrough[key] || 0;
+  state.cancelledThrough[key] = Math.max(state.cancelledThrough[key] || 0, control.cancel);
+  if (control.cancel > previousCutoff) {
+    delete state.sessions[sessKey(control)];
+    delete state.sessions[key];
+  }
+  saveState(); // Tombstone precedes killing, even if the process/PC exits now.
+  const waiting = queued.get(key);
+  if (waiting && waiting.id <= control.cancel) {
+    queued.delete(key);
+    finish(waiting, 'stopped', 'Stopped by you. Send a new message when ready.');
+  }
+  const current = running.get(key);
+  if (current && current.job.id <= control.cancel && !current.job.finished) {
+    current.job.cancelled = true;
+    killTree(current.child);
+  }
+  controlAcks.push({session:control.session,id:control.id});
+  if (controlAcks.length > 32) controlAcks.shift();
+  publishNow().then(result => { if (result.written > 0 && !result.failures.length) signal('ack',control.id,true); });
+  log(`#${control.id} stop chat ${control.chat} through #${control.cancel}`);
+}
+
 function submit(job) {
+  if (job.cancel !== undefined) { cancelJobs(job); return; }
   if (alreadyHandled(job)) return;
   if(job.models){
     voiceControlPending=true;
@@ -516,6 +559,10 @@ function submit(job) {
   if (cur && cur.job.id === job.id) return;
   const q = queued.get(key);
   if (q && q.id === job.id) return;
+  // Only one unsent request per chat can be on the wire. Do not silently lose
+  // a queued instruction if an older addon sends another before its reply.
+  if (q) { queued.delete(key); finish(q, 'stopped', 'Replaced by a newer message.'); }
+  rememberPending(job);
   if (cur || running.size >= MAX_PARALLEL) {
     queued.set(key, job);
     log(`#${job.id}${job.session ? '@' + job.session : ''} queued (${cur ? 'chat busy' : running.size + ' running'})`);
@@ -617,7 +664,7 @@ function runJob(job) {
   } catch (e) { log(`${tag} map file unavailable: ${e.message}`); }
 
   log(`${tag} (${job.via}) ${agent.name} starting in ${cwd}${resume ? ' (resume ' + resume.slice(0, 8) + ')' : ' (new session)'}${ctx ? ' [game context]' : ''}${running.size ? ' [' + (running.size + 1) + ' running]' : ''}`);
-  const child = spawn(cmd.file, args, { cwd, env, windowsHide: true, stdio: [input.stdin !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
+  const child = spawn(cmd.file, args, { cwd, env, windowsHide: true, detached:process.platform !== 'win32', stdio: [input.stdin !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
   running.set(key, { job, child });
   publish(key, { chat: job.chat, id: job.id, status: 'working', text: resume ? 'thinking...' : 'starting a new session...', cwd, session: resume, agent: agentId }, true);
   if (input.stdin !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(input.stdin); }
@@ -636,6 +683,7 @@ function runJob(job) {
   let parserError = false;
 
   const pushProgress = (line) => {
+    if (job.cancelled || job.finished) return;
     progress.push(line);
     while (progress.length > 40) progress.shift();
     beat(job);
@@ -647,7 +695,7 @@ function runJob(job) {
   const keepalive = setInterval(() => beat(job), 45000);
 
   const handleLine = (line) => {
-    if (parserError) return;
+    if (parserError || job.cancelled || job.finished) return;
     let ev;
     try { ev = JSON.parse(line); } catch { return; }
     if (!ev || typeof ev !== 'object') return;
@@ -707,11 +755,14 @@ function runJob(job) {
 
   child.on('error', (err) => {
     cleanup();
+    if (job.cancelled) { finish(job, 'stopped', 'Stopped by you. Send a new message when ready.'); return; }
     finish(job, 'error', `Could not start ${agent.name} (${cmd.file}): ${err.message}\nSet agents.${agentId}.path in config.json.`);
   });
 
   child.on('close', (code) => {
     cleanup();
+    if (job.cancelled) { finish(job, 'stopped', 'Stopped by you. Send a new message when ready.'); return; }
+    if (job.finished) return;
     if (agent.stream === 'text') {
       try {
         const r = parser.finish({ stdout: stdoutText, stderr, code });
@@ -778,10 +829,16 @@ async function finish(job, status, text, session, denied) {
     macros = m.macros;
     summary = P.stripMacroBlocks(summary);
   }
-  noteMessage(job, status === 'done' ? 'assistant' : 'system', status === 'done' ? text : 'Bridge error: ' + text);
+  noteMessage(job, status === 'done' ? 'assistant' : 'system', status === 'error' ? 'Bridge error: ' + text : text);
   const delivered = await publish(chatKey(job), { chat: job.chat, id: job.id, status, text, summary, speech_key:job.speech_key, research: job.research, resources: Research.urls(text), cwd: job.cwd, session, denied, macros, agent: job.agent || '' }, true);
+  // Keep the durable marker until the final snapshot has actually been written.
+  // A crash during publication must also release the old pending UI on restart.
+  if (delivered.written > 0 && delivered.failures.length === 0) {
+    delete state.pending[`${chatKey(job)}:${job.id}`];
+    saveState();
+  }
   // The signal and next job must wait for every slot: never signal an older file.
-  running.delete(chatKey(job));
+  if (running.get(chatKey(job))?.job === job) running.delete(chatKey(job));
   const deliveryOK = delivered.written > 0 && delivered.failures.length === 0;
   if (deliveryOK) signal('sig', job.id, true);
   if (status==='done' && deliveryOK && !exitWhenIdle && !forgotten.has(job.chat)) {
@@ -878,7 +935,26 @@ function banner() {
   console.log('Leave this window open while you play. Ctrl+C to stop.\n');
 }
 
+async function recoverStartup() {
+  const interrupted = Object.values(state.pending);
+  // The on-disk outbox may predate this bridge or contain a prompt the previous
+  // version never marked handled. Normal startup observes it; it never runs it.
+  const saved = readOutbox();
+  if (!exitWhenIdle && saved?.cancel !== undefined) cancelJobs(saved);
+  if (!exitWhenIdle && saved && saved.voice === undefined && !saved.models && saved.cancel === undefined && !alreadyHandled(saved)) interrupted.push(saved);
+  for (const job of interrupted) {
+    delete state.sessions[sessKey(job)];
+    delete state.sessions[chatKey(job)];
+    await finish(job, 'stopped', 'The bridge restarted. The previous request was stopped and was not resumed. Send a new message to continue.');
+  }
+  // Baseline every saved record, including old audio/settings controls. Fresh
+  // reload writes after startup are still accepted. --once is explicit replay.
+  if (!exitWhenIdle && saved) { markHandled(saved); saveState(); }
+}
+
+async function main() {
 banner();
+await recoverStartup();
 if (inject !== null) {
   submit({ id: state.lastId + 1, session: '', chat: '', text: inject, cwd: '', newSession: false, via: 'inject', agent: injectAgent || '' });
 } else {
@@ -892,3 +968,5 @@ if (inject !== null) {
     if (cap.enabled) startCapture();
   }
 }
+}
+main().catch(err => { console.error(err); process.exit(2); });

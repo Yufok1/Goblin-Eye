@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Prevent old saved prompts and interrupted accepted requests from executing
+  automatically when the WoWAI bridge restarts. Preserve history with a stopped
+  notice; continuing requires a new player message.
+- Add Stop below Send and `/wow-ai stop` (`cancel` is an alias). Cancel running
+  agent subprocess trees or queued work in the selected chat, preserve drafts,
+  reject late replies and retain cancellation across UI reloads.
+
 ## 0.2.0 â€” 2026-10-04
 
 - Include the optional MIT-licensed WoWAI companion with full replies, expandable

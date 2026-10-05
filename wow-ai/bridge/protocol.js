@@ -43,6 +43,7 @@ function sessKey(job) { return job.chat ? 'chat:' + job.chat : chatKey(job); }
 // ---------------------------------------------------------------------------
 
 function alreadyHandled(state, job) {
+  if (job.cancel === undefined && job.id <= (state.cancelledThrough?.[chatKey(job)] || 0)) return true;
   const key = job.session || '';
   const h = state.handled[key];
   if (!h) return key === '' && job.id <= state.lastId;
@@ -123,6 +124,7 @@ function parseFlags(flags) {
     else if (tok === 'c') out.context = true;
     else if (tok.startsWith('voice=')) out.voice = tok.slice(6);
     else if (tok === 'models') out.models = true;
+    else if (/^cancel=\d+$/.test(tok)) out.cancel = Number(tok.slice(7));
     else if (tok.startsWith('opts=')) out.options = fromHex(tok.slice(5));
     else if (tok.startsWith('allow=')) out.allow.push(...tok.slice(6).split(',').map(s => s.trim()).filter(Boolean));
     else if (tok.startsWith('agent=')) out.agent = tok.slice(6).trim().toLowerCase();
@@ -177,6 +179,8 @@ function parseOutbox(src) {
   const voice = b.match(/\["voice"\]\s*=\s*"([a-z]+)"/);
   if (voice) job.voice = voice[1];
   if (/\["models"\]\s*=\s*true/.test(b)) job.models = true;
+  const cancel = b.match(/\["cancel"\]\s*=\s*(\d+)/);
+  if (cancel) job.cancel = Number(cancel[1]);
   const options = b.match(/\["options"\]\s*=\s*"([0-9a-fA-F]*)"/);
   if (options) job.options = fromHex(options[1]);
   return job;
