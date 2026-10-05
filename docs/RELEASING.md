@@ -8,8 +8,10 @@ dashboard, and commit the intended release first.
 .\python\python.exe -m unittest discover -s tests -v
 npm ci --ignore-scripts
 npm run build
+npm ci --ignore-scripts --prefix wow-ai
+npm test --prefix wow-ai
 .\python\python.exe scripts/build_release.py
-.\python\python.exe scripts/verify_release.py dist/Goblin-Eye-0.1.1-Windows.zip
+.\python\python.exe scripts/verify_release.py dist/Goblin-Eye-0.2.0-Windows.zip
 ```
 
 The builder first checks that the version in `src/goblin_eye/__init__.py`,
@@ -45,8 +47,8 @@ write`.
 For example, after the release commit is pushed and CI has passed:
 
 ```text
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Enable private vulnerability reporting in repository settings. Keep GitHub
@@ -57,4 +59,10 @@ The repository includes the prebuilt dashboard so GitHub source downloads can
 also run with the included Windows launcher. Friends should normally choose the
 versioned Windows ZIP from Releases. The ZIP contains START-HERE.md and all setup
 documents, but no personal config, database, saved addon data, AI credentials,
-development environment, or third-party game addons.
+development environment or CurseForge data addons. The optional modified WoWAI
+addon/bridge and Windows speech are included with their license and setup guide.
+The verifier installs them into a mock client, checks generated read-only MCP
+connections, parses the Codex TOML and verifies relocation without losing Inbox.
+Node >=22.2 is required for these release checks; no agent login or live game is
+used. Review all prospective tracked text for private paths, secrets and captured
+data before pushing. The allowlist excludes local chat/runtime files and audio.

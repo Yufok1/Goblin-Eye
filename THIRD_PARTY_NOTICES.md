@@ -43,6 +43,21 @@ installed version and hash. `scripts/fetch_python.py --check` verifies that
 record, and `scripts/build_release.py` refuses to package a runtime that does not
 match the pin. No other Python distribution, package, or binary is bundled.
 
+## Included WoWAI companion
+
+`wow-ai/` is a modified copy of [chelinho139/wow-ai](https://github.com/chelinho139/wow-ai),
+licensed under MIT. Its original copyright/license are retained in
+`wow-ai/LICENSE`. Goblin Eye additions include research/evidence UI, settings,
+model discovery, Kilo integration, publishing improvements and Windows speech.
+The companion runs on Node.js installed separately by the user, not a bundled
+Node distribution. Its development-only Lua VM/parser dependencies retain the
+licenses in their upstream npm packages; they are not shipped in the ZIP.
+
+No Warcraft voice recordings, neural voice reference clips or neural voice
+model/runtime assets are included. Windows voices belong to the installed
+Windows speech system. Local imported catalogs and generated speech do not
+become MIT assets by being used by this software.
+
 ## Development dependency
 
 TypeScript 5.9.2 (Apache-2.0) is a development dependency used to compile the

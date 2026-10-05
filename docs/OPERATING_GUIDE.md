@@ -36,8 +36,8 @@ The dashboard automatically imports installed Auctionator, AHledger, Alts
 Forever, ProfessionDB, Forever Guide, QuestieDB, and Mapzeroth when enabled and
 discovered. Static catalogs load on startup and are checked for file changes
 every 60 seconds. Blizzard reference pages and public AHledger refresh on the
-configured external interval (30 minutes by default). No third-party game addon
-is bundled. Keep the dashboard running for automatic ingestion; MCP queries
+configured external interval (30 minutes by default). The optional modified WoWAI chat addon is bundled; these data addons
+are installed separately by the player. Keep the dashboard running for automatic ingestion; MCP queries
 read its database and do not start background import workers.
 
 Discovery checks common Forever client locations independently of other addons.
@@ -62,5 +62,5 @@ Explicit reset commands delete evidence and can pause collection; they are
 maintenance tools, not required setup steps. Do not run them to troubleshoot
 an empty view. Back up your own data before upgrades.
 
-Connect an MCP client using AGENT_SETUP.md in this docs folder. There is no embedded chat model
-or game automation. Every in-game action and decision remains yours.
+Connect an MCP client using AGENT_SETUP.md in this docs folder. The optional WoWAI chat interface uses a separately configured agent CLI;
+there is no embedded AI model or game automation. See IN_GAME_CHAT.md. Every in-game action and decision remains yours.

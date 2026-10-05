@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0 â€” 2026-10-04
+
+- Include the optional MIT-licensed WoWAI companion with full replies, expandable
+  tool/evidence cards, copyable source links and improved rendering/publishing.
+- Add Kilo headless sessions, per-chat settings and supported dynamic model
+  catalogs, plus a single-bridge lock to prevent competing state writers.
+- Add local Windows Desktop speech for summaries/full replies with Play/Stop,
+  voice settings, formatting cleanup and stable older-reply lookup.
+- Exclude Warcraft recordings, character-cloning presets and neural voice assets.
+- Provide guided client/account/agent setup and local read-only MCP connections
+  for Codex, Claude and Kilo. No realm, faction or model is hardcoded.
+- Package the companion source/launchers with bundled Python and the dashboard;
+  Node and an agent CLI are needed only for optional in-game chat.
+- Verify clean mock-client installation, relocation, privacy and fresh ZIP setup.
+  Existing core databases/scans are preserved; no reset is needed.
+
 ## 0.1.1 — 2026-10-04
 
 - Support Auctionator 340 normalized realm and regional ruleset keys, alongside

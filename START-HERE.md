@@ -1,8 +1,8 @@
 # Goblin Eye — start here
 
 Goblin Eye puts your saved auction scans, character information, recipes, item
-sources and world locations in a local browser dashboard. This Windows share
-edition includes the fixes from October 4, 2026.
+sources and world locations in a local browser dashboard. This complete Windows edition includes the dashboard, MCP research server,
+optional WoWAI in-game chat, and local Windows speech.
 
 **You can use the dashboard without an AI subscription.** Optional AI setup comes
 after the dashboard works. Your local auction workspace is recorded as
@@ -20,7 +20,7 @@ markets are shown separately.
 3. If the browser does not open, visit **http://127.0.0.1:8765/**. If the page opens
    before startup finishes, refresh it once the console says the server is running.
 
-**There is nothing to install.** Python is bundled in the ZIP, so you do not need
+**The dashboard needs no additional installation.** Python is bundled in the ZIP, so you do not need
 to install Python, Node.js, npm, pip packages, an API key, or an AI subscription,
 and you do not need administrator access. Your database starts empty.
 
@@ -138,8 +138,24 @@ that client. A browser chat does not automatically gain access to your PC.
 
 You can also copy sourced dashboard results into a free chat service and ask
 questions about them. Goblin Eye supplies no model, account, credentials or
-subscription. **WoWAI is not included or required.** `Start-Agent.cmd` is the
+subscription. **WoWAI is included as an optional companion; it is not required for the dashboard or other MCP clients.** `Start-Agent.cmd` is the
 connection endpoint for an AI client; double-clicking it does not open a chat UI.
+
+## 5. Optional: chat and listen inside WoW
+
+The complete download includes WoWAI with full replies, expandable tool/evidence
+cards, source links, per-chat settings and supported current model catalogs.
+Windows Desktop speech can read summaries or full replies. No Warcraft voice
+recordings or character-cloning assets are included.
+
+Install Node.js 22.2+ and your preferred agent CLI, then run **Setup-WoWAI.cmd**.
+It selects your WoW client/account and creates local read-only MCP connections
+for Codex, Claude and Kilo. Restart WoW, enable WoW AI and its reply slots, then
+run **Start-Goblin-Eye-Chat.cmd** and type `/wow-ai`.
+Follow [In-game chat setup](docs/IN_GAME_CHAT.md) for login, model selection,
+privacy, custom paths and updates. The dashboard still needs none of these
+optional dependencies. Free models can be used where your chosen client/provider
+supports them; no paid subscription is required by Goblin Eye.
 
 ## What is not connected yet?
 

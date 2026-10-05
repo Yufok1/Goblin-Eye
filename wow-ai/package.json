@@ -1,0 +1,41 @@
+{
+  "name": "wow-ai",
+  "version": "0.4.0-goblin-research.6",
+  "private": true,
+  "description": "Chat with local coding agents (Claude Code, Codex, Kilo, Grok Build, Antigravity, Hermes) from inside World of Warcraft: Forever, with no UI reloads. Pixel strip out, load-on-demand slots in.",
+  "license": "MIT",
+  "author": "chelinho139",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yufok1/Goblin-Eye"
+  },
+  "keywords": [
+    "world-of-warcraft",
+    "wow-addon",
+    "claude-code",
+    "claude",
+    "codex",
+    "grok",
+    "coding-agent",
+    "bridge"
+  ],
+  "engines": {
+    "node": ">=22.2"
+  },
+  "bin": {
+    "wow-ai": "bridge/supervisor.js"
+  },
+  "scripts": {
+    "setup": "node ../Setup-WoWAI.js",
+    "start": "node bridge/supervisor.js",
+    "slots": "node bridge/install-slots.js",
+    "test": "node build-addon.js && node tests/order_check.js && node --test tests/bridge_test.js tests/agents_test.js tests/models_test.js tests/kilo_test.js tests/instance_lock_test.js tests/restore_test.js tests/addon_test.js tests/map_test.js tests/map_addon_test.js tests/macro_test.js tests/optimization_test.js tests/evidence_test.js tests/research_test.js tests/research_bridge_test.js tests/speech_test.js tests/setup_test.js && node tests/codec_test.js",
+    "test:live": "node tests/inject_test.js",
+    "probe": "python3 bridge/capture_x11.py --probe bridge/probe.png",
+    "probe:mac": "python3 bridge/capture_mac.py --probe bridge/probe.png"
+  },
+  "devDependencies": {
+    "fengari": "^0.1.4",
+    "luaparse": "^0.3.1"
+  }
+}

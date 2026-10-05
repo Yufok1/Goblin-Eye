@@ -1,0 +1,85 @@
+{
+  "addonDir": "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\Interface\\AddOns",
+  "savedVariablesFile": "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\WTF\\Account\\YOUR_ACCOUNT\\SavedVariables\\WoWAI.lua",
+  "inboxFile": "C:\\Program Files (x86)\\World of Warcraft\\_classic_beta_\\Interface\\AddOns\\WoWAI\\Inbox.lua",
+  "defaultCwd": "C:\\path\\to\\your\\project",
+  "tocInterface": "16001",
+  "slots": 200,
+  "actMax": 60,
+  "presenceMax": 2000,
+  "presenceIntervalMs": 30000,
+  "maxParallel": 3,
+  "capture": {
+    "enabled": true,
+    "processName": "WowB",
+    "cellPx": 4,
+    "cellsPerRow": 200,
+    "maxRows": 48,
+    "intervalMs": 250,
+    "python": "python3",
+    "windowName": "",
+    "keepComposited": false
+  },
+  "agent": "claude",
+  "agents": {
+    "claude": {
+      "path": "",
+      "model": "",
+      "permissionMode": "default",
+      "deniedTools": [
+        "Bash",
+        "Write",
+        "Edit",
+        "NotebookEdit"
+      ],
+      "extraArgs": [],
+      "allowedTools": [
+        "Read",
+        "Glob",
+        "Grep",
+        "WebSearch",
+        "WebFetch",
+        "mcp__goblin_eye__*"
+      ]
+    },
+    "codex": {
+      "path": "",
+      "model": "",
+      "permissionMode": "default",
+      "networkAccess": false,
+      "extraArgs": []
+    },
+    "kilo": {
+      "path": "",
+      "model": "",
+      "variant": "",
+      "permissionMode": "default",
+      "extraArgs": [],
+      "researchOnly": true
+    },
+    "agy": {
+      "path": "",
+      "model": "",
+      "permissionMode": "default",
+      "extraArgs": []
+    },
+    "hermes": {
+      "path": "",
+      "model": "",
+      "permissionMode": "default",
+      "extraArgs": []
+    },
+    "grok": {
+      "path": "",
+      "model": "",
+      "permissionMode": "default",
+      "deniedTools": [],
+      "extraArgs": []
+    }
+  },
+  "gameContext": true,
+  "primerFile": "../Goblin-Eye-Chat/AGENTS.md",
+  "pollMs": 750,
+  "progressWriteMs": 3000,
+  "timeoutMs": 1800000
+}

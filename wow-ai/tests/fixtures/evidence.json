@@ -1,0 +1,118 @@
+{
+  "depth": {
+    "item_id": 2453,
+    "item_name": "Bruiseweed",
+    "market_key": "wow-forever",
+    "data_available": true,
+    "snapshot": {
+      "id": 7,
+      "captured_at": "2026-10-04T14:43:56+00:00",
+      "imported_at": "2026-10-04T15:00:00+00:00",
+      "source_key": "local-ahledger",
+      "confidence": 0.9,
+      "game_build": "synthetic-build",
+      "is_complete": 0,
+      "ruleset": "normal",
+      "faction": "alliance",
+      "region": "unknown"
+    },
+    "totals": {
+      "listed_units": 2017,
+      "listing_count": 40,
+      "bid_only_listings": 1,
+      "min_unit_buyout_copper": 591,
+      "money_display": {
+        "min_unit_buyout_copper": "0g 5s 91c"
+      }
+    }
+  },
+  "item": {
+    "item_id": 2453,
+    "name": "Bruiseweed",
+    "identity_selection_policy": "synthetic fixture",
+    "quality": "Common",
+    "item_level": 10,
+    "required_level": 0,
+    "source_key": "fixture",
+    "confidence": 0.9,
+    "recipes": {
+      "consumes": {
+        "total": 2
+      }
+    },
+    "acquisition": {
+      "total": 1
+    }
+  },
+  "observations": [
+    {
+      "observation_type": "listing",
+      "item_id": 2453,
+      "market_key": "wow-forever",
+      "source_key": "local-ahledger",
+      "quantity": 1,
+      "buyout_copper": 1000
+    },
+    {
+      "observation_type": "listing",
+      "item_id": 2453,
+      "market_key": "wow-forever",
+      "source_key": "local-ahledger",
+      "quantity": 2,
+      "buyout_copper": 2000
+    },
+    {
+      "observation_type": "aggregated_price",
+      "item_id": 2453,
+      "item_name": "Bruiseweed",
+      "source_key": "local-auctionator",
+      "market_key": "wow-forever",
+      "observed_date": "2026-10-04",
+      "available_quantity": 2715,
+      "current_min_unit_copper": 591,
+      "money_display": {
+        "current_min_unit_copper": "0g 5s 91c"
+      }
+    }
+  ],
+  "acquisition": {
+    "item_id": 2453,
+    "total": 1,
+    "records": [
+      {
+        "item_name": "Bruiseweed",
+        "method": "gathering",
+        "entity_type": "object",
+        "entity_name": "Synthetic herb node",
+        "evidence_basis": "classic_baseline",
+        "evidence_ref": "fixture"
+      }
+    ],
+    "evidence": {
+      "fixture": {
+        "source_key": "fixture",
+        "confidence": 0.7
+      }
+    }
+  },
+  "health": {
+    "market_key": "wow-forever",
+    "auction_context": {
+      "ruleset": "unknown",
+      "faction": "unknown",
+      "region": "unknown",
+      "realm": "unknown"
+    },
+    "sources": [
+      {
+        "source_key": "fixture"
+      }
+    ],
+    "markets": [
+      {
+        "market_key": "wow-forever",
+        "latest_listing_scan": "2026-10-04T14:43:56+00:00"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+## Interface: 16001
+## Title: WoW AI
+## Notes: Research chat with Claude Code, Codex, Kilo, Grok, Antigravity or Hermes; optional local reply audio. Needs the companion bridge.
+## Author: chelinho139
+## Version: 0.4.0-goblin-research.6
+## SavedVariables: WoWAIDB, WoWAIMapDB
+## OptionalDeps: WoWAI_Nodes
+
+Codec.lua
+Inbox.lua
+WoWAI.lua
+Research.lua
+Map.lua

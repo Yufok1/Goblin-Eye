@@ -24,8 +24,12 @@ ROOT_FILES = (
     "Run-Goblin-Eye.ps1", "Start-Agent.cmd", "Start-Goblin-Eye.cmd",
     "START-HERE.md", "config.example.json", "requirements.txt",
     "pyproject.toml", "package.json", "package-lock.json",
+    "Setup-WoWAI.cmd", "Setup-WoWAI.js", "Start-Goblin-Eye-Chat.cmd",
+    "wow-ai/README.md", "wow-ai/VOICE.md", "wow-ai/LICENSE", "wow-ai/UPSTREAM.md", "wow-ai/.gitignore",
+    "wow-ai/package.json", "wow-ai/package-lock.json", "wow-ai/build-addon.js", "wow-ai/setup.js",
 )
-ROOT_TREES = ("src", "migrations", "docs", "python", "web/src", "web/public", "web/dist")
+ROOT_TREES = ("src", "migrations", "docs", "python", "web/src", "web/public", "web/dist",
+              "wow-ai/bridge", "wow-ai/addon/WoWAI", "wow-ai/docs", "Goblin-Eye-Chat")
 VENDORED_ROOT = "python"
 # Matched anywhere in a relative path.
 EXCLUDED_PARTS = {
@@ -46,6 +50,8 @@ REQUIRED_FILES = (
     "migrations/001_initial.sql",
     "python/python.exe",
     "python/.goblin-eye-python.json",
+    "Setup-WoWAI.js", "Start-Goblin-Eye-Chat.cmd", "Goblin-Eye-Chat/AGENTS.md",
+    "wow-ai/bridge/speech.js", "wow-ai/bridge/config.example.json", "wow-ai/addon/WoWAI/WoWAI.lua",
 )
 
 # Absolute machine paths must never reach a public archive. These are structural
@@ -61,7 +67,9 @@ PRIVATE_PATTERNS = (
 )
 # Agent-local configuration is matched by name, because .gitignore legitimately
 # mentions these paths in order to exclude them.
-FORBIDDEN_NAMES = {".mcp.json", ".mcp.jsonc", ".codex", ".claude", "config.json"}
+FORBIDDEN_NAMES = {".mcp.json", ".mcp.jsonc", ".codex", ".claude", "config.json",
+                   "kilo.json", "state.json", "transcripts.json", "speech-settings.json",
+                   "neural-voice.json", "bridge.lock"}
 # A fixed DOS timestamp keeps the archive byte-identical across runs.
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
@@ -95,6 +103,8 @@ def collect() -> dict[str, bytes]:
         for path in sorted(base.rglob("*")):
             relative = path.relative_to(ROOT)
             if not path.is_file() or EXCLUDED_PARTS.intersection(relative.parts):
+                continue
+            if path.name in FORBIDDEN_NAMES or any(part in {"tmp", "research", "mapjobs", "backups", "voice-lab", "sig", "ack", "act", "ctl", "presence"} for part in relative.parts):
                 continue
             # The vendored interpreter legitimately ships .zip (the stdlib) and
             # .pyd (extension modules); suffix filtering applies only to project files.
@@ -167,11 +177,14 @@ def main() -> int:
     manifest = {
         "application": "Goblin Eye",
         "version": version,
-        "edition": "Windows source with prebuilt dashboard and bundled Python; neutral local market profile",
-        "requires": "Windows 10/11. Node.js and an AI subscription are not required to run",
+        "edition": "Complete Windows edition: dashboard, MCP, optional WoWAI and Desktop speech; neutral market profile",
+        "requires": "Windows 10/11. Dashboard: bundled Python. Optional in-game chat: Node >=22.2 and an agent CLI",
         "bundled_runtime": runtime,
         "personal_data_included": False,
-        "third_party_addons_included": False,
+        "third_party_addons_included": ["WoWAI (MIT, modified)"],
+        "wow_ai_included": True,
+        "desktop_speech_included": True,
+        "warcraft_recordings_included": False,
         "files": {name: {"bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
                   for name, body in sorted(files.items())},
     }

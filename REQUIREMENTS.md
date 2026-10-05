@@ -7,7 +7,7 @@
 - A folder you can write to, for the database.
 - A browser for the dashboard (default http://127.0.0.1:8765/).
 
-**Python is bundled.** The ZIP ships a pinned, hash-verified Python 3.12 runtime
+**Python is bundled.** The ZIP ships a pinned, hash-verified Python 3.13 runtime
 and the launcher uses it automatically, so nothing has to be installed. See
 [INSTALL-PYTHON.md](INSTALL-PYTHON.md).
 
@@ -27,7 +27,7 @@ Node.js, npm, a database server, and administrator privileges are not needed.
   when you want saved addon observations imported automatically.
 
 Goblin Eye does not supply a model, model API credentials, agent subscription,
-or chat interface. The chosen agent handles conversations, credentials and
+or provider account. The optional WoWAI chat interface uses your own client. The chosen agent handles conversations, credentials and
 any billing. Goblin Eye supplies evidence and optional companion notes through
 MCP. No model-provider key is required in Goblin Eye's config.json.
 
@@ -47,14 +47,26 @@ other profiles are skipped. A new AHledger scan can identify an unset profile;
 if Auctionator contains several markets, select `local_realm` and `local_faction`
 in config.json. Region and ruleset are never guessed from a realm name.
 
+## Optional: in-game WoWAI and Windows speech
+
+The complete package includes the modified WoWAI addon and bridge. It requires
+Windows, **Node.js >=22.2**, and an installed/authenticated supported agent CLI.
+No npm packages are needed to run the bridge. See [in-game setup](docs/IN_GAME_CHAT.md).
+Setup generates local read-only MCP connections for Codex, Claude and Kilo;
+other adapters need their own client-specific MCP configuration.
+
+Desktop speech uses Windows System.Speech and installed Windows voices, off by
+default. No model, GPU runtime, Warcraft recordings or cloned voice assets are
+bundled. The dashboard and standard MCP clients do not require WoWAI or Node.
+
 ## Optional data and networking
 
 WoW Forever and compatible, user-installed addons are needed for personal game
 observations. None is required to open the empty dashboard. Supported sources
 include Alts Forever, Auctionator, AHledger, ProfessionDB, Forever Guide,
 QuestieDB, and Mapzeroth. Follow the complete addon list and download links in
-[START-HERE.md](START-HERE.md). Addons are not bundled or
-automatically installed. Goblin Eye reads saved files after /reload or logout.
+[START-HERE.md](START-HERE.md). These data addons are not bundled or automatically installed.
+Only the optional WoWAI chat addon is included and installed by its separate setup. Goblin Eye reads saved files after /reload or logout.
 
 Internet access is needed for AHledger public syncing, official Blizzard page
 caching, and any networked AI client you choose. Local saved-file research and

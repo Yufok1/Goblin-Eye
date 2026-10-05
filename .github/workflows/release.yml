@@ -49,6 +49,12 @@ jobs:
           $env:PYTHONPATH = Join-Path (Get-Location) 'src'
           py -3 -m unittest discover -s tests
 
+      - name: Test the optional in-game companion
+        working-directory: wow-ai
+        run: |
+          npm ci --ignore-scripts
+          npm test
+
       - name: Build and verify the archive
         run: |
           py -3 scripts/build_release.py

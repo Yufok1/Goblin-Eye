@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "goblin-eye"
-version = "0.1.1"
+version = "0.2.0"
 description = "Local-first economic research for World of Warcraft: Forever"
 readme = "README.md"
 requires-python = ">=3.10"

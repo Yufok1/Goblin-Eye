@@ -37,4 +37,10 @@ PACKAGE-MANIFEST.json
 .DS_Store
 Thumbs.db
 
+# Per-player optional chat connections and assets
+/Goblin-Eye-Chat/kilo.json
+/Goblin-Eye-Chat/.claude/
+/wow-ai/voice-lab/
+/wow-ai/backups/
+
 # web/dist is intentionally tracked so source downloads can launch on Windows.

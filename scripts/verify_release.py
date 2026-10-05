@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -215,6 +216,68 @@ def verify_dashboard(root: Path) -> None:
         fail("the shipped dashboard still asserts a faction/ruleset")
 
 
+def verify_chat_installation(root: Path) -> dict:
+    """Exercise the shipped setup on a mock client, then relocate the package."""
+    node = shutil.which("node")
+    if not node:
+        fail("Node >=22.2 is required to verify the optional chat installer")
+    client = root.parent / "Mock Forever Client"
+    (client / "Interface").mkdir(parents=True)
+    (client / "WTF/Account/TEST_ACCOUNT").mkdir(parents=True)
+    (client / "WowB.exe").write_text("mock client, never executed", encoding="ascii")
+    # Keep the mock small; the slot-pool algorithm has its own full tests.
+    example = root / "wow-ai/bridge/config.example.json"
+    config = json.loads(example.read_text())
+    config.update(slots=3, actMax=3, presenceMax=4)
+    example.write_text(json.dumps(config), encoding="utf-8")
+
+    def setup(package: Path) -> None:
+        result = subprocess.run([node, str(package / "Setup-WoWAI.js"), "--wow", str(client),
+                                 "--account", "TEST_ACCOUNT", "--agent", "codex", "--yes"],
+                                cwd=package, capture_output=True, text=True, timeout=180)
+        if result.returncode:
+            fail(f"optional chat setup failed: {result.stdout}{result.stderr}")
+        cfg = json.loads((package / "wow-ai/bridge/config.json").read_text())
+        if cfg["defaultCwd"] != str(package / "Goblin-Eye-Chat"):
+            fail("chat setup kept another installation's work folder")
+        mcp = json.loads((package / "Goblin-Eye-Chat/.mcp.json").read_text())["mcpServers"]["goblin_eye"]
+        if mcp["command"] != str(package / "python/python.exe") or mcp["args"][-1] != "mcp":
+            fail("chat setup did not use its bundled interpreter and read-only MCP")
+        if str(package / "config.json") not in mcp["args"]:
+            fail("chat setup did not select this package's config")
+        protocol = "".join(json.dumps(message) + "\n" for message in HANDSHAKE)
+        result = run([mcp["command"], *mcp["args"]], package, input=protocol, timeout=120)
+        replies = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        if result.returncode or len(replies) != 3 or any("error" in reply for reply in replies):
+            fail("generated chat MCP connection failed the handshake")
+        if any(t["name"] == "add_companion_entry" for t in replies[1]["result"]["tools"]):
+            fail("chat setup exposed companion write tools")
+        if not (client / "Interface/AddOns/WoWAI_S003/Inbox.lua").is_file():
+            fail("reply slot addons were not installed")
+        toml = package / "Goblin-Eye-Chat/.codex/config.toml"
+        check = run([mcp["command"], "-c", "import sys,tomllib; tomllib.load(open(sys.argv[1],'rb'))", str(toml)], package, timeout=30)
+        if check.returncode:
+            fail("generated Codex TOML is invalid")
+        kilo = json.loads((package / "Goblin-Eye-Chat/kilo.json").read_text())
+        if kilo["mcp"]["goblin-eye"]["command"] != [mcp["command"], *mcp["args"]]:
+            fail("generated Kilo MCP connection differs")
+
+    setup(root)
+    inbox = client / "Interface/AddOns/WoWAI/Inbox.lua"
+    inbox.write_text("-- existing private reply\nWoWAI_Inbox={replies={}}\n", encoding="utf-8")
+    moved = root.with_name("Moved Goblin Eye With Spaces")
+    if root.resolve().parent != moved.resolve().parent or moved.exists():
+        fail("unexpected relocation target")
+    # A recipient may relocate by copying the extracted folder. Keeping the old
+    # copy also proves generated MCP commands actually use the new interpreter.
+    shutil.copytree(root, moved)
+    setup(moved)
+    if "existing private reply" not in inbox.read_text():
+        fail("rerunning setup erased the existing Inbox")
+    return {"mock_client_installation": "passed", "generated_read_only_mcp": "passed",
+            "package_relocation": "passed", "existing_inbox_preserved": "passed"}
+
+
 def main() -> int:
     archive_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else default_archive()
     root = extract(archive_path)
@@ -247,6 +310,7 @@ def main() -> int:
         verify_windows_launchers(root)
         report["windows_launchers"] = "passed"
         report["paths_with_spaces"] = "passed"
+        report["optional_chat"] = verify_chat_installation(root)
     else:
         report["windows_launchers"] = "skipped: not a Windows host"
     # The version contains dots, so build the name explicitly.
