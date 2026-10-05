@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Support ProfessionDB 1.9 borrowed required-skill annotations and additional
+  metadata catalogs without executing Lua. Retain borrowed origins in recipe
+  evidence; cache availability/location catalogs without asserting their contents
+  as verified Forever facts.
 - Prevent old saved prompts and interrupted accepted requests from executing
   automatically when the WoWAI bridge restarts. Preserve history with a stopped
   notice; continuing requires a new player message.

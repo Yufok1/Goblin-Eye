@@ -131,7 +131,8 @@ class LuaLiteralReader:
 
 
 def read_library_table(text: str, method: str, profession_argument: bool = False,
-                       allowed_trailing_methods: tuple[str, ...] = ()) -> tuple[int | None, dict]:
+                       allowed_trailing_methods: tuple[str, ...] = (),
+                       borrowed_fields: dict[int, dict[str, str]] | None = None) -> tuple[int | None, dict]:
     pattern = rf"^lib:{re.escape(method)}\(\s*" + (r"(\d+)\s*,\s*" if profession_argument else "")
     matches = list(re.finditer(pattern, text, re.MULTILINE))
     if len(matches) != 1:
@@ -144,13 +145,35 @@ def read_library_table(text: str, method: str, profession_argument: bool = False
         raise ValueError(f"{method} data must be a table")
     if profession_argument:
         reader.skip()
-        for trailing in allowed_trailing_methods:
-            if text.startswith(f"lib:{trailing}(", reader.position):
-                reader.expect(f"lib:{trailing}(")
+        seen = set()
+        while reader.position < len(text):
+            trailing = next((name for name in allowed_trailing_methods
+                             if text.startswith(f"lib:{name}(", reader.position)), None)
+            if trailing is None:
+                raise ValueError(f"Unexpected data after {method}")
+            reader.expect(f"lib:{trailing}(")
+            if trailing == "LoadBorrowed":
+                field = reader.read()
+                reader.expect(",")
+                origin = reader.read()
+                reader.expect(",")
+                ids = reader.read()
+                if (method != "LoadCore" or borrowed_fields is None or field != "requiredSkill"
+                        or not isinstance(origin, str) or not origin.strip() or len(origin) > 80
+                        or not isinstance(ids, dict) or set(ids) != set(range(1, len(ids) + 1))):
+                    raise ValueError("Unreviewed borrowed recipe metadata")
+                for spell_id in ids.values():
+                    if (type(spell_id) is not int or spell_id <= 0 or spell_id not in value
+                            or not isinstance(value[spell_id], dict) or field not in value[spell_id]
+                            or field in borrowed_fields.get(spell_id, {})):
+                        raise ValueError("Invalid or duplicate borrowed recipe reference")
+                    borrowed_fields.setdefault(spell_id, {})[field] = origin
+            else:
+                if trailing in seen:
+                    raise ValueError(f"Duplicate trailing {trailing} call")
+                seen.add(trailing)
                 if not isinstance(reader.read(), dict):
                     raise ValueError("Expected trailing literal data table")
-                reader.expect(")")
-                reader.skip()
-        if reader.position != len(text):
-            raise ValueError(f"Unexpected data after {method}")
+            reader.expect(")")
+            reader.skip()
     return (int(match.group(1)) if profession_argument else None), value

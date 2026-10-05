@@ -23,6 +23,11 @@ and static source assertions do not prove current in-game availability.
 
 ## Fixed population failures
 
+- ProfessionDB 1.9 added `LoadBorrowed` annotations and separate metadata files.
+  Recipe imports accept the inspected literal format, retain borrowed skill
+  origins (374 Vanilla skill annotations in the inspected 1.9 package), and cache
+  the additional files as source documents. Hidden-recipe flags and emulator-sourced
+  NPC acquisition catalogs are not imported as verified Forever assertions.
 - QuestieDB and Mapzeroth previously had import commands but no automatic workers.
 - Blizzard publication caching previously required a separate sync command.
 - ProfessionDB, Forever Guide and local AHledger discovery could depend on another

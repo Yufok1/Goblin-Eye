@@ -23,7 +23,9 @@ LIMITATIONS = (
     "Client-extracted recipe existence does not prove current obtainability or availability at the level cap.",
     "Output quantities are absent from this source and remain unknown.",
     "Required skill is the source's value; Forever trainer requirements are not independently verified.",
-    "Vendor, trainer and drop acquisition locations are not provided by this Forever dataset.",
+    "Vendor, trainer and drop acquisition locations are not imported from this recipe dataset.",
+    "Required skills marked as borrowed retain their provider-reported origin, such as Vanilla; they are not independently verified Forever requirements.",
+    "The provider's hidden-recipe and acquisition-location metadata files are cached as source documents, not imported as availability or location assertions.",
     "Synthetic recipe-scroll descriptors are excluded. Missing teaching items do not prove trainer acquisition.",
 )
 
@@ -98,6 +100,12 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
     for relative in core_paths:
         if relative in (recipe_items_path, acquire_path):
             continue
+        if relative in {f"Data/Forever/_core/{name}.lua" for name in ("HiddenRecipes", "Sources", "SourceNames")}:
+            # These v1.9 catalogs describe availability and emulator-sourced
+            # acquisition, not profession recipe rows. Preserve their source
+            # documents without converting them into unsupported Forever facts.
+            read(relative)
+            continue
         text = read(relative)
         if "WoW Forever" not in text[:250] or 'IsGameVersion("Forever")' not in text:
             raise ValueError(f"Missing Forever guard: {relative}")
@@ -105,7 +113,8 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
         if not stamp:
             raise ValueError(f"Missing source build/count: {relative}")
         builds.add(stamp.group(1))
-        profession_id, core = read_library_table(text, "LoadCore", True, ("LoadEnchantsCore",))
+        borrowed = {}
+        profession_id, core = read_library_table(text, "LoadCore", True, ("LoadEnchantsCore", "LoadBorrowed"), borrowed)
         if len(core) != int(stamp.group(2)):
             raise ValueError(f"Source row count mismatch: {relative}")
         names_path = relative.replace("/_core/", "/enUS/")
@@ -147,6 +156,9 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
                           "localized_fields": localized, "locale": "enUS", "names_reference": f"{names_path}#{spell_id}",
                           "acquire_method": acquire.get(spell_id), "is_skill_rank": bool(rank_books.get(spell_id)),
                           "acquisition_reference": f"{acquire_path}#{spell_id}" if spell_id in acquire else None}
+            if spell_id in borrowed:
+                attributes["borrowed_fields"] = borrowed[spell_id]
+                attributes["required_skill_basis"] = "borrowed:" + borrowed[spell_id]["requiredSkill"]
             recipes.append(RecipeEvidence(spell_id, positive_id(profession_id, "profession ID"), profession,
                 localized["name"], output, skill, reagents, teaching_id, attributes, f"{relative}#{spell_id}"))
     if len(builds) != 1 or not recipes:
