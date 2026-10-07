@@ -6,7 +6,7 @@ local window
 local BG = {bgFile="Interface\\Tooltips\\UI-Tooltip-Background",edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=12,insets={left=4,right=4,top=4,bottom=4}}
 local function Safe(s) return (tostring(s or ""):gsub("|", "¦")) end
 local function Button(parent,label,x,y,w,fn)
- local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(w,22);b:SetPoint("TOPLEFT",x,-y);b:SetText(label);b:SetScript("OnClick",fn);return b
+ local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(w,22);b:SetPoint("TOPLEFT",x,-y);b:SetText(label);b:SetScript("OnClick",fn);if AI.SkinButton then AI.SkinButton(b) end;return b
 end
 local function Text(parent,x,y,w,font)
  local t=parent:CreateFontString(nil,"OVERLAY",font or "GameFontHighlightSmall");t:SetPoint("TOPLEFT",x,-y);t:SetWidth(w);t:SetJustifyH("LEFT");t:SetWordWrap(true);return t

@@ -55,9 +55,9 @@ local BACKDROP = {
 
 -- The assistant bubble is labelled with the agent that wrote it (see AgentName).
 local ROLE_STYLE = {
-	user      = { label = "You",    color = { 0.49, 0.78, 1.00 }, bg = { 0.25, 0.45, 0.75, 0.16 } },
-	assistant = { label = "AI",     color = { 1.00, 0.82, 0.25 }, bg = { 0.85, 0.70, 0.30, 0.10 } },
-	system    = { label = "System", color = { 0.62, 0.62, 0.62 }, bg = { 0.50, 0.50, 0.50, 0.10 } },
+	user      = { label = "You",    color = { 0.76, 0.64, 0.98 }, bg = { 0.11, 0.075, 0.16, 0.96 } },
+	assistant = { label = "AI",     color = { 0.76, 0.97, 0.46 }, bg = { 0.065, 0.09, 0.055, 0.97 } },
+	system    = { label = "System", color = { 0.73, 0.69, 0.62 }, bg = { 0.085, 0.075, 0.07, 0.96 } },
 }
 
 ---------------------------------------------------------------------------
@@ -2049,6 +2049,7 @@ local function GetBubble(i)
 	b:SetScript("OnMouseUp", function(self, button)
 		if button == "LeftButton" and self.text and self.text ~= "" then WoWAI.ShowCopy(self.text) end
 	end)
+	if WoWAI.ThemeBubble then WoWAI.ThemeBubble(b) end
 	ui.bubbles[i] = b
 	return b
 end
@@ -2119,6 +2120,7 @@ function WoWAI.Render()
 				if not mb then
 					mb = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
 					mb:SetHeight(22)
+					if WoWAI.SkinButton then WoWAI.SkinButton(mb) end
 					mb:SetScript("OnClick", function(self) WoWAI.InstallMacro(self.macro) end)
 					mb:SetScript("OnEnter", function(self)
 						GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -2502,6 +2504,7 @@ local function MakeButton(parent, label, width, onClick)
 	b:SetSize(width, 22)
 	b:SetText(label)
 	b:SetScript("OnClick", onClick)
+	if WoWAI.SkinButton then WoWAI.SkinButton(b) end
 	return b
 end
 
@@ -2627,6 +2630,7 @@ local function BuildUI()
 	panel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -52)
 	panel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 50)
 	panel:SetWidth(PANEL_W)
+	ui.panel = panel
 	panel:SetBackdrop({
 		bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2793,6 +2797,7 @@ local function BuildUI()
 	inputBg:SetPoint("BOTTOMLEFT", panel, "BOTTOMRIGHT", 8, 0)
 	inputBg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14 - SEND_W - 6, 50)
 	inputBg:SetHeight(54)
+	ui.inputBg = inputBg
 	inputBg:SetBackdrop({
 		bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2956,6 +2961,7 @@ local function BuildUI()
 	local mlabel = m:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	mlabel:SetPoint("LEFT", miniDotHolder, "RIGHT", 6, 0)
 	mlabel:SetText("WoW AI")
+	ui.miniLabel = mlabel
 
 	local badge = m:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	badge:SetPoint("LEFT", mlabel, "RIGHT", 8, 0)
@@ -2983,6 +2989,7 @@ local function BuildUI()
 
 	local mclose = CreateFrame("Button", nil, m, "UIPanelCloseButton")
 	mclose:SetSize(24, 24)
+	ui.miniClose = mclose
 	mclose:SetPoint("RIGHT", m, "RIGHT", -2, 0)
 	mclose:SetScript("OnClick", function() WoWAI.Toggle(false) end)
 	mclose:SetScript("OnEnter", function(self)
@@ -2991,6 +2998,7 @@ local function BuildUI()
 		GameTooltip:Show()
 	end)
 	mclose:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	if WoWAI.ApplyGoblinTheme then WoWAI.ApplyGoblinTheme(f, ui) end
 end
 
 function WoWAI.Toggle(show)

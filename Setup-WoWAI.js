@@ -61,14 +61,14 @@ function install(root,client,account,agent) {
  for(const [id,block] of Object.entries(example.agents))cfg.agents[id]??=block;
  const backup=path.join(root,'wow-ai','backups','setup-'+Date.now());
  function backupFile(file,relative) {
-  if(fs.existsSync(file)){const dest=path.join(backup,relative);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(file,dest);}
+  if(fs.existsSync(file)){const dest=path.join(backup,relative);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.cpSync(file,dest,{recursive:true});}
  }
  backupFile(configFile,'config.json');
  const addon=path.join(cfg.addonDir,'WoWAI');fs.mkdirSync(addon,{recursive:true});
  for(const file of fs.readdirSync(path.join(root,'wow-ai','addon','WoWAI'))) {
   const target=path.join(addon,file);
   if(file==='Inbox.lua'&&fs.existsSync(target))continue;
-  backupFile(target,'addon/'+file);fs.copyFileSync(path.join(root,'wow-ai','addon','WoWAI',file),target);
+  backupFile(target,'addon/'+file);fs.cpSync(path.join(root,'wow-ai','addon','WoWAI',file),target,{recursive:true});
  }
  for(const [name,content] of Object.entries(mcpConfigs(root))) {
   const target=path.join(project,name);backupFile(target,'chat/'+name);atomic(target,content);

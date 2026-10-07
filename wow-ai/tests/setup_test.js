@@ -16,6 +16,7 @@ test('setup installs into an explicitly selected mock client and creates read-on
  const {root,client}=fixture();const out=install(root,client,'ACCOUNT','kilo');
  const cfg=JSON.parse(fs.readFileSync(out.configFile));assert.equal(cfg.defaultCwd,path.join(root,'Goblin-Eye-Chat'));assert.equal(cfg.agent,'kilo');
  assert.ok(fs.existsSync(path.join(client,'Interface/AddOns/WoWAI_S002/Inbox.lua')));
+ assert.ok(fs.existsSync(path.join(client,'Interface/AddOns/WoWAI/Media/GoblinEye.tga')));
  const mcp=JSON.parse(fs.readFileSync(path.join(out.project,'.mcp.json'))).mcpServers.goblin_eye;
  assert.equal(mcp.args.at(-1),'mcp');assert.ok(mcp.args.includes(path.join(root,'config.json')));
  const kilo=JSON.parse(fs.readFileSync(path.join(out.project,'kilo.json')));assert.equal(kilo.mcp['goblin-eye'].command[0],mcp.command);

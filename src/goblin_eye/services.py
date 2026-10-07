@@ -231,6 +231,8 @@ class ResearchService:
 
     def item(self, item_id: int) -> dict[str, Any] | None:
         integer(item_id, "item_id", 1)
+        from goblin_eye.item_properties import ItemProperties
+        properties = ItemProperties(self.database).get(item_id)
         with self.database.transaction() as connection:
             selected = connection.execute('SELECT * FROM selected_item_names WHERE item_id=?',(item_id,)).fetchone()
             item = None
@@ -245,7 +247,7 @@ class ResearchService:
                         FROM world_entity_facts w JOIN research_datasets d ON d.id=w.dataset_id
                         JOIN sources s ON s.id=d.source_id WHERE w.dataset_id=? AND w.entity_type='item' AND w.entity_id=?""",
                         (selected['dataset_id'],item_id)).fetchone()
-            if not item and not self.graph.search_items(str(item_id),1)['items']:
+            if not item and properties['status'] == 'not_recorded' and not self.graph.search_items(str(item_id),1)['items']:
                 return None
             listings = connection.execute(
                 """SELECT m.market_key, sn.source_id, sn.captured_at, sn.external_id, l.quantity, l.stack_size, l.buyout_copper,
@@ -280,6 +282,7 @@ class ResearchService:
             ).fetchall()
             result = dict(item or observed_item) if (item or observed_item) else {"item_id": item_id, "name": None}
             result["item_id"] = item_id
+            result['item_properties'] = properties
             result['identity_selection_policy'] = 'Source trust rank, newest retrieval, confidence, deterministic tie. Build applicability must be checked; world relationship names remain source-specific.'
             result['price_observation_limit'] = 500
             result['price_observations_truncated'] = connection.execute('SELECT count(*) FROM price_observations WHERE item_id=?',(item_id,)).fetchone()[0] > 500

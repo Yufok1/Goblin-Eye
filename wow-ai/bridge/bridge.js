@@ -70,7 +70,8 @@ const controlAcks = [];
 const Models = require('./models');
 const catalog = new Models.ModelCatalog({config:cfg,defaultAgent:cfg.agent||A.DEFAULT_AGENT,onChange:()=>{if(!exitWhenIdle)publishNow();}});
 const speech = new SpeechManager({directory:HERE,log,onChange:()=>{ if (!exitWhenIdle) publishNow(); }});
-process.on('exit',()=>{ if(speech.active)speech.active.kill(); });
+process.on('exit',()=>{ if(speech.active)speech.active.kill(); if(speech.worker&&speech.worker!==speech.active)speech.worker.kill(); });
+setImmediate(()=>{if(!exitWhenIdle&&speech.neural?.prewarm===true&&speech.settings.profile!=='desktop')speech.warm();});
 
 // The agent chats use unless they pick their own (/wow-ai agent, "agent=" flag).
 const DEFAULT_AGENT = A.normalizeAgent(cfg.agent || A.DEFAULT_AGENT);

@@ -44,3 +44,6 @@ Thumbs.db
 /wow-ai/backups/
 
 # web/dist is intentionally tracked so source downloads can launch on Windows.
+
+# Private recovery handoff
+/RESTORATION.md

@@ -18,7 +18,7 @@ TOOLS = [
     },
     {
         "name": "get_character_snapshot",
-        "description": "Read a saved character observation and its source, freshness, item records and limitations. Follow item IDs with item research tools. No automatic upgrade ranking.",
+        "description": "Read a saved character observation and its source, freshness, item records and limitations. Follow item IDs with item research tools. Includes explicit slot names, observed item links and sourced base stats when available. Static variants retain build/fallback labels. Exact suffix/enchant values and effective character totals may be unknown; never rank an upgrade by color or name alone.",
         "inputSchema": {"type": "object", "properties": {"snapshot_id": {"type": "integer", "minimum": 1}}, "required": ["snapshot_id"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
@@ -113,7 +113,7 @@ TOOLS = [
     },
     {
         "name": "get_item_research",
-        "description": "Get local item facts, listings, recipe dependencies, and modeled loot sources.",
+        "description": "Get local item facts, sourced base stats/requirements/effects, listings, recipe dependencies, and modeled loot sources. Item properties remain available in compact detail; compare their build and variant labels.",
         "inputSchema": {
             "type": "object", "properties": {"item_id": {"type": "integer"}}, "required": ["item_id"],
             "additionalProperties": False,

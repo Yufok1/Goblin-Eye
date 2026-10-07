@@ -28,6 +28,7 @@ class ItemGraph:
             SELECT item_id FROM item_observations UNION SELECT id FROM items
             UNION SELECT item_id FROM auction_rows
             UNION SELECT item_id FROM character_item_observations
+            UNION SELECT p.item_id FROM item_property_facts p JOIN research_datasets d ON d.id=p.dataset_id WHERE d.active=1
             UNION SELECT w.entity_id FROM world_entity_facts w JOIN research_datasets d ON d.id=w.dataset_id
                 WHERE d.active=1 AND w.entity_type='item'
             UNION SELECT item_id FROM price_observations WHERE item_id IS NOT NULL

@@ -6,10 +6,14 @@ provenance. This module only reads records already stored in Goblin Eye.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 from goblin_eye.repository import Database
+
+SLOT_NAMES = dict(enumerate(('Head','Neck','Shoulder','Shirt','Chest','Waist','Legs','Feet','Wrist','Hands',
+    'Finger 1','Finger 2','Trinket 1','Trinket 2','Back','Main Hand','Off Hand','Ranged','Tabard'), 1))
 
 
 class CharacterStore:
@@ -50,16 +54,36 @@ class CharacterStore:
         if result["source_key"] == "local-alts-forever":
             from goblin_eye.agent_responses import money_label
             char = result["source_payload"]["character"]
+            from goblin_eye.item_properties import ItemProperties
+            properties, evidence = ItemProperties(self.database).get_many([i['item_id'] for i in result['items']])
+            result['item_property_evidence'] = evidence
             for field in ("realm", "race", "game_build"):
                 if result[field] == "unknown":
                     result[field] = None
             for item in result["items"]:
                 item.update(quantity=1, enchant_id=None, random_suffix=None,
                             item_link=char.get("gear", {}).get(str(item["slot_id"])))
+                link = item['item_link'] or ''
+                name = re.search(r'\|h\[(.*?)\]\|h', link)
+                quality = re.search(r'\|cnIQ(\d+):', link)
+                # Preserve the full modern link. Bonus IDs are not Classic random-suffix IDs.
+                item.update(slot_name=SLOT_NAMES.get(item['slot_id']),
+                    equipped_name=name[1] if name else None,
+                    equipped_quality_id=int(quality[1]) if quality else None,
+                    item_properties=properties.get(item['item_id'],{}),
+                    instance_stats_status='unresolved_bonus_and_enchant',
+                    instance_stats_note='Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total.')
             result["items"].extend({**dict(item), "ordinal": None, "slot_id": None,
                 "enchant_id": None, "random_suffix": None} for item in inventory)
             result["inventory"] = [dict(item) for item in inventory]
             result["character"] = char
+            by_slot = {i['slot_id']:i for i in result['items'] if i['location']=='equipped'}
+            gear = char.get('gear') or {}
+            result['equipment_slots'] = [{"slot_id":slot,"slot_name":name,
+                "status":"equipped" if slot in by_slot else "recorded_empty" if str(slot) in gear and gear[str(slot)] is None else "not_recorded",
+                "item_id":by_slot[slot]['item_id'] if slot in by_slot else None} for slot,name in SLOT_NAMES.items()]
+            result['character_stats'] = {'status':'not_recorded',
+                'reason':'Inspected Alts Forever save does not export effective character stats. Static item stats are not buffed/talented character totals.'}
             result["money_copper"] = char.get("money")
             result["money_display"] = {"money_copper": money_label(char["money"])} if char.get("money") is not None else {}
             result["coverage"] = {field: {"status": "recorded" if field in char else "not_recorded",

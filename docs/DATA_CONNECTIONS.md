@@ -13,6 +13,7 @@ WoW must still save personal observations after /reload, logout or normal exit.
 | ProfessionDB | Startup; installed file changes every 60 seconds | 2,511 active recipe assertions in the audited revision |
 | Forever Guide acquisition | Startup; installed file changes every 60 seconds | 323,513 acquisition links and 20,754 entity facts in the audited revision |
 | Forever Guide professions | Startup; installed file changes every 60 seconds | 2,495 recipes, 549 acquisition links and 5,015 entity facts |
+| Forever Guide items | Startup; installed catalog changes every 60 seconds | Base stats, armor, weapon damage, requirements, quality, effects and explicit fallback/build labels; no source data bundled |
 | Forever Guide dungeons | Startup; installed file changes every 60 seconds | 137 loot/reward links and 131 entity facts |
 | QuestieDB | Startup; installed file changes every 60 seconds | 16,788 NPC/object records, 112,011 spawn coordinate points and 23,418 waypoint points |
 | Mapzeroth | Startup; installed file changes every 60 seconds | 922 travel nodes and 352 authored connections |

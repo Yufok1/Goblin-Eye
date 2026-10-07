@@ -55,9 +55,9 @@ local BACKDROP = {
 
 -- The assistant bubble is labelled with the agent that wrote it (see AgentName).
 local ROLE_STYLE = {
-	user      = { label = "You",    color = { 0.49, 0.78, 1.00 }, bg = { 0.25, 0.45, 0.75, 0.16 } },
-	assistant = { label = "AI",     color = { 1.00, 0.82, 0.25 }, bg = { 0.85, 0.70, 0.30, 0.10 } },
-	system    = { label = "System", color = { 0.62, 0.62, 0.62 }, bg = { 0.50, 0.50, 0.50, 0.10 } },
+	user      = { label = "You",    color = { 0.76, 0.64, 0.98 }, bg = { 0.11, 0.075, 0.16, 0.96 } },
+	assistant = { label = "AI",     color = { 0.76, 0.97, 0.46 }, bg = { 0.065, 0.09, 0.055, 0.97 } },
+	system    = { label = "System", color = { 0.73, 0.69, 0.62 }, bg = { 0.085, 0.075, 0.07, 0.96 } },
 }
 
 ---------------------------------------------------------------------------
@@ -2049,6 +2049,7 @@ local function GetBubble(i)
 	b:SetScript("OnMouseUp", function(self, button)
 		if button == "LeftButton" and self.text and self.text ~= "" then WoWAI.ShowCopy(self.text) end
 	end)
+	if WoWAI.ThemeBubble then WoWAI.ThemeBubble(b) end
 	ui.bubbles[i] = b
 	return b
 end
@@ -2119,6 +2120,7 @@ function WoWAI.Render()
 				if not mb then
 					mb = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
 					mb:SetHeight(22)
+					if WoWAI.SkinButton then WoWAI.SkinButton(mb) end
 					mb:SetScript("OnClick", function(self) WoWAI.InstallMacro(self.macro) end)
 					mb:SetScript("OnEnter", function(self)
 						GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -2502,6 +2504,7 @@ local function MakeButton(parent, label, width, onClick)
 	b:SetSize(width, 22)
 	b:SetText(label)
 	b:SetScript("OnClick", onClick)
+	if WoWAI.SkinButton then WoWAI.SkinButton(b) end
 	return b
 end
 
@@ -2627,6 +2630,7 @@ local function BuildUI()
 	panel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -52)
 	panel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 50)
 	panel:SetWidth(PANEL_W)
+	ui.panel = panel
 	panel:SetBackdrop({
 		bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2793,6 +2797,7 @@ local function BuildUI()
 	inputBg:SetPoint("BOTTOMLEFT", panel, "BOTTOMRIGHT", 8, 0)
 	inputBg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14 - SEND_W - 6, 50)
 	inputBg:SetHeight(54)
+	ui.inputBg = inputBg
 	inputBg:SetBackdrop({
 		bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2956,6 +2961,7 @@ local function BuildUI()
 	local mlabel = m:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	mlabel:SetPoint("LEFT", miniDotHolder, "RIGHT", 6, 0)
 	mlabel:SetText("WoW AI")
+	ui.miniLabel = mlabel
 
 	local badge = m:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	badge:SetPoint("LEFT", mlabel, "RIGHT", 8, 0)
@@ -2983,6 +2989,7 @@ local function BuildUI()
 
 	local mclose = CreateFrame("Button", nil, m, "UIPanelCloseButton")
 	mclose:SetSize(24, 24)
+	ui.miniClose = mclose
 	mclose:SetPoint("RIGHT", m, "RIGHT", -2, 0)
 	mclose:SetScript("OnClick", function() WoWAI.Toggle(false) end)
 	mclose:SetScript("OnEnter", function(self)
@@ -2991,6 +2998,7 @@ local function BuildUI()
 		GameTooltip:Show()
 	end)
 	mclose:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	if WoWAI.ApplyGoblinTheme then WoWAI.ApplyGoblinTheme(f, ui) end
 end
 
 function WoWAI.Toggle(show)
@@ -3394,15 +3402,17 @@ do
   local function Button(parent, text, w, fn)
    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
    b:SetSize(w, 22); b:SetText(text); b:SetScript("OnClick", fn)
+   if AI.SkinButton then AI.SkinButton(b) end
    return b
   end
   local voiceWindow
   function AI.RefreshVoiceSettings()
    if not voiceWindow then return end
    local s = AI.SpeechInfo()
-   voiceWindow.slower:SetEnabled(true); voiceWindow.faster:SetEnabled(true)
+   local desktop = not s.profile or s.profile == "desktop"
+   voiceWindow.slower:SetEnabled(desktop); voiceWindow.faster:SetEnabled(desktop)
    voiceWindow.playSummary:SetEnabled(not s.busy);voiceWindow.playFull:SetEnabled(not s.busy);voiceWindow.testVoice:SetEnabled(not s.busy)
-   local voice = (s.voice or "") ~= "" and s.voice or "Windows default"
+   local voice = s.profile == "goblin" and "Goblin (local)" or s.profile == "orc" and "Orc (local)" or ((s.voice or "") ~= "" and s.voice or "Windows default")
    voiceWindow.status:SetText(Safe("Automatic replies: " .. (s.enabled and "ON" or "OFF") .. " | " .. (s.mode or "summary") .. "\nVolume: " .. (s.volume or 70) .. " | " .. (s.phase or "Idle") .. "\nVoice: " .. voice .. "\n" .. (s.error or "")))
   end
   function AI.ShowVoiceSettings()
@@ -3426,9 +3436,10 @@ do
     f.faster = Control("Faster", "rate", function() return math.min(10, (AI.SpeechInfo().rate or 0) + 1) end, 328, 164)
     f.playSummary=Control("Play TL;DR", "listen", "", 16, 193); f.playFull=Control("Play full", "listenfull", "", 120, 193)
     Control("Stop voice", "stop", "", 224, 193); Control("Refresh", "status", "", 328, 193)
-    f.testVoice=Control("Test voice", "preview", "", 16, 222)
-    local note = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"); note:SetPoint("TOPLEFT", 16, -253); note:SetWidth(402); note:SetJustifyH("LEFT")
-    note:SetText("Windows speech reads replies locally.\nPlay chooses a saved summary or full reply; Stop cancels playback.\nChoose another installed voice with /wow-ai voice name <name>.")
+    Control("Goblin", "character", "goblin", 16, 222); Control("Orc", "character", "orc", 120, 222); Control("Desktop", "character", "desktop", 224, 222)
+    f.testVoice=Control("Test voice", "preview", "", 16, 251)
+    local note = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"); note:SetPoint("TOPLEFT", 16, -282); note:SetWidth(402); note:SetJustifyH("LEFT")
+    note:SetText("Goblin and Orc use your private local voice files.\nPlay reads a saved summary or full reply; Stop cancels playback.\nCharacter voices prepare once, then reuse the loaded model.")
     voiceWindow = f
    end
    AI.RefreshVoiceSettings(); voiceWindow:Show()
@@ -3603,6 +3614,7 @@ do
      frame.evidenceCard = card
      local amber = card.badge == "Classic baseline" or card.type == "aggregate"
      frame:SetBackdropColor(0.04, 0.065, 0.075, 0.96); frame:SetBackdropBorderColor(amber and 0.65 or 0.28, amber and 0.48 or 0.62, amber and 0.20 or 0.64, 1)
+     if AI.ThemeEvidence then AI.ThemeEvidence(frame,amber) end
      frame.title:SetWidth(width - 58); frame.title:SetText(Safe(card.title .. "  [" .. card.badge .. "]"))
      local lines = {card.headline, (card.market_key ~= "" and card.market_key .. " | " or "") .. (card.source_key ~= "" and card.source_key or "See tool result"), AI.EvidenceStamp(card)}
      if not message.evidenceDetails[card.key] then
@@ -3745,7 +3757,7 @@ do
   local BG = {bgFile="Interface\\Tooltips\\UI-Tooltip-Background",edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=12,insets={left=4,right=4,top=4,bottom=4}}
   local function Safe(s) return (tostring(s or ""):gsub("|", "¦")) end
   local function Button(parent,label,x,y,w,fn)
-   local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(w,22);b:SetPoint("TOPLEFT",x,-y);b:SetText(label);b:SetScript("OnClick",fn);return b
+   local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(w,22);b:SetPoint("TOPLEFT",x,-y);b:SetText(label);b:SetScript("OnClick",fn);if AI.SkinButton then AI.SkinButton(b) end;return b
   end
   local function Text(parent,x,y,w,font)
    local t=parent:CreateFontString(nil,"OVERLAY",font or "GameFontHighlightSmall");t:SetPoint("TOPLEFT",x,-y);t:SetWidth(w);t:SetJustifyH("LEFT");t:SetWordWrap(true);return t
@@ -3844,5 +3856,159 @@ do
    end
    window.chat=c.id;window.selected=nil;window.free=false;window.search:SetText("");window:Show();Request(1)
   end
+
+end
+
+-- Goblin Eye grimoire theme
+do
+  -- Original Goblin Eye / warlock presentation. No transport or gameplay hooks.
+  local AI = WoWAI
+  local unpack = unpack or table.unpack
+  if AI.GoblinThemeLoaded then return end
+  AI.GoblinThemeLoaded = true
+  local EYE = "Interface\\AddOns\\WoWAI\\Media\\GoblinEye.tga"
+  local BG = { bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Tooltips\\UI-Tooltip-Border", tile=true, tileSize=16, edgeSize=12, insets={left=3,right=3,top=3,bottom=3} }
+  local currentUI
+  local tones = {
+   neutral={bg={0.09,0.065,0.13,0.98},edge={0.43,0.30,0.57,1},text={0.88,0.83,0.95}},
+   fel={bg={0.10,0.20,0.09,1},edge={0.48,0.69,0.24,1},text={0.79,1,0.49}},
+   danger={bg={0.19,0.07,0.105,1},edge={0.55,0.25,0.32,1},text={0.97,0.65,0.68}},
+  }
+  local function PaintButton(button,hover)
+   local style=tones[button.goblinTone] or tones.neutral
+   button.goblinSkin:SetBackdropColor(unpack(style.bg))
+   local edge=hover and {0.72,0.86,0.48,1} or style.edge
+   button.goblinSkin:SetBackdropBorderColor(unpack(edge))
+   local label=button:GetFontString()
+   if label then
+    if button:IsEnabled() then label:SetTextColor(unpack(style.text)) else label:SetTextColor(0.46,0.43,0.5) end
+   end
+  end
+  function AI.SkinButton(button,tone)
+   if not button then return end
+   button.goblinTone=tone or button.goblinTone or "neutral"
+   if not button.goblinSkin then
+    -- Template chrome is replaced visually; native click/disabled behavior stays.
+    for _,key in ipairs({"Left","Middle","Right"}) do
+     local region=button[key]
+     if (type(region)=="table" or type(region)=="userdata") and region.Hide then region:Hide() end
+    end
+    button:SetNormalTexture("");button:SetPushedTexture("");button:SetDisabledTexture("");button:SetHighlightTexture("")
+    local skin=CreateFrame("Frame",nil,button,"BackdropTemplate")
+    skin:SetAllPoints();skin:SetBackdrop(BG);skin:EnableMouse(false)
+    skin:SetFrameLevel(math.max(0,(button:GetFrameLevel() or 2)-1))
+    button.goblinSkin=skin
+    button:HookScript("OnEnter",function(self) PaintButton(self,true) end)
+    button:HookScript("OnLeave",function(self) PaintButton(self,false) end)
+    button:SetNormalFontObject(GameFontHighlightSmall);button:SetHighlightFontObject(GameFontHighlightSmall)
+    button:SetDisabledFontObject(GameFontDisableSmall)
+   end
+   PaintButton(button,false)
+  end
+  local function Texture(parent,layer,path,w,h,point,relative,relativePoint,x,y,alpha)
+   local texture=parent:CreateTexture(nil,layer)
+   if texture:SetTexture(path)==false then texture:SetTexture("Interface\\Icons\\Spell_Shadow_EyeOfKilrogg") end
+   texture:SetSize(w,h);texture:SetPoint(point,relative,relativePoint,x,y)
+   if alpha then texture:SetAlpha(alpha) end
+   return texture
+  end
+  local function Line(parent,point,x,y,width,height,r,g,b,a)
+   local texture=parent:CreateTexture(nil,"BORDER")
+   texture:SetPoint(point,parent,point,x,y);texture:SetSize(width,height);texture:SetColorTexture(r,g,b,a or 1)
+   return texture
+  end
+  local function Pulse(texture)
+   local ok,group=pcall(function()
+    local g=texture:CreateAnimationGroup()
+    local rise=g:CreateAnimation("Alpha");rise:SetFromAlpha(0.14);rise:SetToAlpha(0.48);rise:SetDuration(1.1);rise:SetOrder(1)
+    local fall=g:CreateAnimation("Alpha");fall:SetFromAlpha(0.48);fall:SetToAlpha(0.14);fall:SetDuration(1.1);fall:SetOrder(2)
+    g:SetLooping("REPEAT");return g
+   end)
+   return ok and group or nil
+  end
+  local function Counts()
+   local unread,working=0,0
+   for _,chat in ipairs((WoWAIDB and WoWAIDB.chats) or {}) do
+    unread=unread+(chat.unread or 0);if chat.pendingId then working=working+1 end
+   end
+   return unread,working
+  end
+  local function UpdateEye()
+   if not currentUI then return end
+   local ui=currentUI;local unread,working=Counts()
+   ui.miniBadge:SetText(unread>0 and tostring(unread) or (working>0 and "..." or ""))
+   ui.miniBadge:SetTextColor(unread>0 and 0.82 or 0.85,unread>0 and 1 or 0.7,unread>0 and 0.48 or 1)
+   ui.eyeBadge:SetShown(unread>0 or working>0)
+   if ui.eyePulse then
+    if ui.mini:IsShown() and (unread>0 or working>0) then
+     if not ui.eyePulse:IsPlaying() then ui.eyePulse:Play() end
+    else ui.eyePulse:Stop();ui.eyeGlow:SetAlpha(0.14) end
+   end
+  end
+  function AI.ThemeBubble(bubble)
+   if bubble.goblinStyled then return end
+   bubble.goblinStyled=true
+   local top=Line(bubble,"TOPLEFT",4,0,20,1,0.52,0.37,0.65,0.8)
+   top:SetPoint("TOPRIGHT",bubble,"TOPRIGHT",-4,0)
+   bubble.who:SetShadowOffset(1,-1);bubble.body:SetShadowOffset(1,-1)
+   AI.SkinButton(bubble.allow)
+  end
+  function AI.ThemeEvidence(frame,amber)
+   frame:SetBackdropColor(0.055,0.043,0.083,0.98)
+   frame:SetBackdropBorderColor(amber and 0.72 or 0.38,amber and 0.54 or 0.56,amber and 0.25 or 0.29,1)
+   frame.title:SetTextColor(0.79,0.97,0.51)
+  end
+  function AI.ApplyGoblinTheme(frame,ui)
+   currentUI=ui
+   frame:SetBackdropColor(0.025,0.021,0.038,0.985);frame:SetBackdropBorderColor(0.43,0.32,0.49,1)
+   local header=frame:CreateTexture(nil,"BACKGROUND");header:SetPoint("TOPLEFT",7,-7);header:SetPoint("TOPRIGHT",-7,-7);header:SetHeight(48);header:SetColorTexture(0.08,0.055,0.11,0.95)
+   local rule=Line(frame,"TOPLEFT",14,-56,20,1,0.38,0.52,0.24,0.9);rule:SetPoint("TOPRIGHT",frame,"TOPRIGHT",-14,-56)
+   Texture(frame,"ARTWORK",EYE,54,54,"TOPLEFT",frame,"TOPLEFT",13,-4)
+   local brand=frame:CreateFontString(nil,"OVERLAY","GameFontNormalLarge")
+   brand:SetPoint("TOPLEFT",frame,"TOPLEFT",76,-13);brand:SetText("GOBLIN EYE");brand:SetTextColor(0.78,0.97,0.45);brand:SetShadowOffset(1,-1)
+   ui.brand=brand
+   ui.title:ClearAllPoints();ui.title:SetPoint("LEFT",brand,"RIGHT",14,0);ui.title:SetPoint("RIGHT",frame,"RIGHT",-160,0)
+   ui.title:SetJustifyH("LEFT");ui.title:SetWordWrap(false);ui.title:SetFontObject(GameFontHighlightSmall);ui.title:SetTextColor(0.76,0.69,0.87)
+   ui.status:ClearAllPoints();ui.status:SetPoint("TOPLEFT",frame,"TOPLEFT",76,-35);ui.status:SetPoint("RIGHT",frame,"RIGHT",-42,0)
+   ui.status:SetTextColor(0.76,0.8,0.71)
+   local dot=ui.dot:GetParent();dot:ClearAllPoints();dot:SetSize(12,12);dot:SetPoint("TOPRIGHT",frame,"TOPRIGHT",-44,-17)
+   ui.panel:ClearAllPoints();ui.panel:SetPoint("TOPLEFT",frame,"TOPLEFT",14,-64);ui.panel:SetPoint("BOTTOMLEFT",frame,"BOTTOMLEFT",14,50)
+   ui.panel:SetBackdropColor(0.055,0.037,0.078,0.97);ui.panel:SetBackdropBorderColor(0.36,0.26,0.45,1)
+   Texture(ui.panel,"BACKGROUND",EYE,142,142,"BOTTOM",ui.panel,"BOTTOM",0,8,0.045)
+   for _,button in ipairs(ui.chatButtons) do button.selected:SetColorTexture(0.31,0.51,0.17,0.38) end
+   ui.inputBg:SetBackdropColor(0.04,0.055,0.034,0.98);ui.inputBg:SetBackdropBorderColor(0.39,0.53,0.27,1)
+   ui.input:SetTextColor(0.91,0.95,0.87)
+   ui.input:HookScript("OnEditFocusGained",function() ui.inputBg:SetBackdropBorderColor(0.72,0.9,0.36,1) end)
+   ui.input:HookScript("OnEditFocusLost",function() ui.inputBg:SetBackdropBorderColor(0.39,0.53,0.27,1) end)
+   AI.SkinButton(ui.send,"fel");AI.SkinButton(ui.connect,"fel");AI.SkinButton(ui.stop,"danger")
+   ui.cwd:SetTextColor(0.58,0.54,0.65)
+   -- Compact, draggable eye instead of the old 250-pixel bar. Existing drag,
+   -- click-to-open, saved position and Quit handlers remain in control.
+   local mini=ui.mini;mini:SetSize(76,76);mini:SetBackdropColor(0,0,0,0);mini:SetBackdropBorderColor(0,0,0,0)
+   ui.eyeGlow=Texture(mini,"BACKGROUND",EYE,74,74,"CENTER",mini,"CENTER",0,0,0.14);ui.eyeGlow:SetBlendMode("ADD")
+   ui.eyeIcon=Texture(mini,"ARTWORK",EYE,66,66,"CENTER",mini,"CENTER",0,0)
+   ui.miniLabel:Hide()
+   local miniDot=ui.miniDot:GetParent();miniDot:ClearAllPoints();miniDot:SetSize(12,12);miniDot:SetPoint("BOTTOMRIGHT",mini,"BOTTOMRIGHT",-8,7)
+   local badge=CreateFrame("Frame",nil,mini,"BackdropTemplate");badge:SetSize(24,20);badge:SetPoint("TOPLEFT",mini,"TOPLEFT",0,-4)
+   badge:SetBackdrop(BG);badge:SetBackdropColor(0.06,0.08,0.025,0.96);badge:SetBackdropBorderColor(0.55,0.7,0.29,1)
+   ui.eyeBadge=badge
+   ui.miniBadge:SetParent(badge);ui.miniBadge:ClearAllPoints();ui.miniBadge:SetPoint("CENTER",badge,"CENTER",0,0);ui.miniBadge:SetWidth(20);ui.miniBadge:SetJustifyH("CENTER")
+   ui.miniClose:ClearAllPoints();ui.miniClose:SetPoint("TOPRIGHT",mini,"TOPRIGHT",2,2);ui.miniClose:SetSize(20,20);ui.miniClose:SetAlpha(0.4)
+   ui.miniClose:HookScript("OnEnter",function(self) self:SetAlpha(1) end);ui.miniClose:HookScript("OnLeave",function(self) self:SetAlpha(0.4) end)
+   ui.eyePulse=Pulse(ui.eyeGlow)
+   mini:HookScript("OnShow",UpdateEye);mini:HookScript("OnHide",UpdateEye)
+   mini:HookScript("OnEnter",function(self)
+    local unread,working=Counts()
+    GameTooltip:SetOwner(self,"ANCHOR_RIGHT");GameTooltip:SetText("Goblin Eye")
+    GameTooltip:AddLine("Click to open your grimoire. Drag to move the eye.",0.79,0.95,0.54,true)
+    if working>0 then GameTooltip:AddLine(working.." chat(s) working",0.84,0.71,1) end
+    if unread>0 then GameTooltip:AddLine(unread.." unread replies",0.79,1,0.45) end
+    GameTooltip:Show()
+   end)
+   mini:HookScript("OnLeave",function() GameTooltip:Hide() end)
+   UpdateEye()
+  end
+  local updateMini=AI.UpdateMini
+  AI.UpdateMini=function(...) updateMini(...);UpdateEye() end
 
 end

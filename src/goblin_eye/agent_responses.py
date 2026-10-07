@@ -96,6 +96,24 @@ def with_money(value):
 
 def prepare_response(name, value, detail='compact'):
     if name == 'get_item_research' and detail != 'full': value = item_summary(value)
+    if name == 'get_character_snapshot' and isinstance(value, dict):
+        value = deepcopy(value)
+        # The same raw character was repeated at both roots. Keep the readable
+        # character and shared payload metadata; HTTP detail retains the original.
+        if isinstance(value.get('source_payload'), dict) and 'character' in value:
+            value['source_payload'].pop('character', None)
+            if isinstance(value['character'], dict):
+                value['character'].pop('gear', None)  # Links and empty slots are in items/equipment_slots.
+        # Inventory rows already occur in items. Share the identical instance
+        # limitation once, so nineteen stat-bearing slots fit the tool budget.
+        if any(item.get('location') != 'equipped' for item in value.get('items', [])):
+            value.pop('inventory', None)
+        instance_notes = set()
+        for item in value.get('items', []):
+            if item.get('instance_stats_note'):
+                instance_notes.add(item.pop('instance_stats_note'))
+        if instance_notes:
+            value['equipment_interpretation'] = sorted(instance_notes)
     value = with_money(value)
     if name in ('search_world_entities','search_acquisition_sources','get_item_acquisition'):
         value = discovery_page(value, detail)
@@ -110,7 +128,7 @@ def item_summary(value):
     if value is None: return None
     keys = ('item_id','name','quality','item_class','item_subclass','item_level','required_level',
             'vendor_sell_copper','source_key','retrieved_at','game_build','confidence',
-            'evidence_kind','raw_reference','identity_selection_policy','listing_markets')
+            'evidence_kind','raw_reference','identity_selection_policy','listing_markets','item_properties')
     result = {k:value[k] for k in keys if k in value}
     result['response_format'] = 'summary'
     acquisition = value.get('acquisition', {})

@@ -93,21 +93,25 @@ class AutoImportTests(unittest.TestCase):
 
     def test_foreverguide_failure_does_not_poison_other_catalogs(self):
         names = ("ForeverGuide.toc", "README.txt", "ItemSearchData.lua", "ItemSearch.lua", "ProfessionData.lua",
-                 "Professions.lua", "Auction.lua", "DungeonLoot.lua", "DungeonData.lua", "Dungeons.lua")
+                 "Professions.lua", "Auction.lua", "DungeonLoot.lua", "DungeonData.lua", "Dungeons.lua",
+                 "ItemCatalogData.lua", "GearData.lua", "ItemStatsData.lua")
         for name in names:
             (self.root / name).write_text("test")
         from goblin_eye.ingestion.foreverguide import ForeverGuideAdapter
         from goblin_eye.ingestion.foreverguide_professions import ForeverGuideProfessionAdapter
         from goblin_eye.ingestion.foreverguide_dungeons import ForeverGuideDungeonAdapter
+        from goblin_eye.ingestion.foreverguide_items import ForeverGuideItemAdapter
         watcher = ForeverGuideWatcher(self.db, (str(self.root),))
         with patch.object(discovery, "WOW_ROOTS", ()), \
              patch.object(ForeverGuideAdapter, "import_file", return_value="acquisition") as acquisition, \
              patch.object(ForeverGuideProfessionAdapter, "import_file", return_value="professions") as professions, \
+             patch.object(ForeverGuideItemAdapter, "import_file", return_value="items") as items, \
              patch.object(ForeverGuideDungeonAdapter, "import_file", side_effect=ValueError("dungeon only")) as dungeon:
-            self.assertEqual(watcher.scan_once(), ["acquisition", "professions"])
+            self.assertEqual(watcher.scan_once(), ["acquisition", "professions", "items"])
             self.assertEqual(watcher.scan_once(), [])
             self.assertEqual(acquisition.call_count, 1)
             self.assertEqual(professions.call_count, 1)
+            self.assertEqual(items.call_count, 1)
             self.assertEqual(dungeon.call_count, 2)
         with self.db.transaction() as connection:
             rows = connection.execute("SELECT source_key,last_error FROM sources").fetchall()

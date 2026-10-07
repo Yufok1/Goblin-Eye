@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Restore Goblin Eye grimoire theme and optional private speech runtime (no voice assets distributed).
+- Populate existing character/item tools from installed Forever Guide item catalogs, keeping stat variants, conflicts, source builds and Classic fallbacks visible.
+- Preserve explicit equipment slots and separate unavailable character totals from base item stats. No WoWAI equipment requests or gameplay access.
+
 - Support ProfessionDB 1.9 borrowed required-skill annotations and additional
   metadata catalogs without executing Lua. Retain borrowed origins in recipe
   evidence; cache availability/location catalogs without asserting their contents

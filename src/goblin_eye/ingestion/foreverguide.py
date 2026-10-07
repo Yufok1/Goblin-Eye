@@ -213,6 +213,7 @@ class ForeverGuideWatcher(ProfessionDBWatcher):
     def scan_once(self) -> list[ImportResult]:
         from .foreverguide_professions import ForeverGuideProfessionAdapter, SOURCE_KEY as PROFESSION_SOURCE_KEY
         from .foreverguide_dungeons import ForeverGuideDungeonAdapter, SOURCE_KEY as DUNGEON_SOURCE_KEY
+        from .foreverguide_items import ForeverGuideItemAdapter, SOURCE_KEY as ITEM_SOURCE_KEY, FILES as ITEM_FILES
         from .discovery import discover_addon_paths
         from .static_watcher import record_error
         results = []
@@ -225,6 +226,7 @@ class ForeverGuideWatcher(ProfessionDBWatcher):
              ("ForeverGuide.toc", "README.txt", "ProfessionData.lua", "Professions.lua", "Auction.lua")),
             (ForeverGuideDungeonAdapter(), DUNGEON_SOURCE_KEY, "bundled_acquisition_database", 4,
              ("ForeverGuide.toc", "DungeonLoot.lua", "DungeonData.lua", "Dungeons.lua", "ItemSearch.lua")),
+            (ForeverGuideItemAdapter(), ITEM_SOURCE_KEY, "bundled_item_database", 6, ITEM_FILES),
         )
         for path in discover_addon_paths("ForeverGuide", "ForeverGuide.toc", candidates):
             for adapter, source_key, source_type, rank, names in imports:

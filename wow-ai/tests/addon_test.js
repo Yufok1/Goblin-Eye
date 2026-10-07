@@ -974,7 +974,18 @@ test('reload mode writes the outbox for the bridge instead of drawing the strip'
   assert.equal(decodeStrip(vm), null);
 });
 
-test('voice settings offer Desktop playback without Warcraft character presets',()=>{
+test('local voice settings retain Desktop, Orc and Goblin without reintroducing Lich',()=>{
  const vm=newVM();login(vm);connect(vm);vm.run('WoWAI.ShowVoiceSettings()');
- for(const label of ['Orc','Goblin','Lich'])assert.equal(vm.evaluate('(function() for _,f in ipairs(STUB.frames) do if f.text=='+JSON.stringify(label)+' then return true end end return false end)()'),'false');
+ for(const label of ['Desktop','Orc','Goblin'])assert.equal(vm.evaluate('(function() for _,f in ipairs(STUB.frames) do if f.text=='+JSON.stringify(label)+' then return true end end return false end)()'),'true');
+ assert.equal(vm.evaluate('(function() for _,f in ipairs(STUB.frames) do if f.text=="Lich" then return true end end return false end)()'),'false');
+});
+
+test('the minimized eye opens on click, stays minimized during drag, and sends no request',()=>{
+ const vm=newVM();login(vm);connect(vm);vm.run('WoWAI.Minimize(true)');
+ const records=stripRecords(vm).length;
+ vm.run('WoWAIMini.scripts.OnDragStart(WoWAIMini);WoWAIMini.scripts.OnMouseUp(WoWAIMini,"LeftButton")');
+ assert.equal(vm.evaluate('WoWAIMini.shown'),'true');
+ vm.run('WoWAIMini.scripts.OnDragStop(WoWAIMini);STUB.RunTimers();WoWAIMini.scripts.OnMouseUp(WoWAIMini,"LeftButton")');
+ assert.equal(vm.evaluate('WoWAIFrame.shown'),'true');assert.equal(vm.evaluate('WoWAIMini.shown'),'false');
+ assert.equal(stripRecords(vm).length,records);
 });
