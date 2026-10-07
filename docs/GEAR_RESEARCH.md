@@ -7,7 +7,9 @@ retrieve equipment, item stats or quest completion.
 
 At dashboard startup, Goblin Eye installs its small, owned
 `integrations/alts-forever/GoblinEyeExport.lua` extension into the existing
-Alts Forever folder and appends it to that addon's TOC. It checks the inspected
+Alts Forever folder and appends it to both supported manifests when present:
+`AltsForever_Camelot.toc` (Forever's edition-specific manifest) and
+`AltsForever.toc` (the generic manifest). It checks the inspected
 Forever interface and scanner contracts first. Original files are backed up
 under `data/addon-backups`. Setup errors appear in source health. No additional
 addon, external catalog, or model download is required.

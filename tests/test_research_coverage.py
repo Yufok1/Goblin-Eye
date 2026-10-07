@@ -166,6 +166,31 @@ class CoverageTests(unittest.TestCase):
         (addon/'Gear.lua').write_text('changed')
         with self.assertRaises(ValueError): install_item_export(addon,helper,backup)
 
+    def test_installer_repairs_edition_manifest_even_when_generic_is_installed(self):
+        addon=self.path/'AltsForever'; addon.mkdir()
+        original='## Interface: 16001\n## Version: 0.10.0\nCore.lua\nGear.lua\nScanner.lua\nUpgrades.lua\n'
+        (addon/'AltsForever.toc').write_text(original+'GoblinEyeExport.lua\n')
+        (addon/'AltsForever_Camelot.toc').write_text(original)
+        for name,marker in (('Core','On'),('Gear','ScanGear'),('Scanner','ScanContainers'),('Upgrades','ItemScore')):
+            (addon/(name+'.lua')).write_text('function ns.'+marker+'(')
+        helper=ROOT/'integrations/alts-forever/GoblinEyeExport.lua';backup=self.path/'backups'
+        (addon/'GoblinEyeExport.lua').write_bytes(helper.read_bytes())
+        self.assertTrue(install_item_export(addon,helper,backup))
+        self.assertFalse(install_item_export(addon,helper,backup))
+        for name in ('AltsForever.toc','AltsForever_Camelot.toc'):
+            self.assertEqual((addon/name).read_text().splitlines().count('GoblinEyeExport.lua'),1)
+        self.assertTrue(any(p.name.startswith('AltsForever_Camelot.toc.') for p in backup.rglob('*.bak')))
+
+    def test_unreviewed_edition_manifest_prevents_any_installation(self):
+        addon=self.path/'AltsForever'; addon.mkdir()
+        (addon/'AltsForever.toc').write_text('## Interface: 16001\n## Version: 0.10.0\n')
+        (addon/'AltsForever_Camelot.toc').write_text('## Interface: 16001\n## Version: changed\n')
+        helper=ROOT/'integrations/alts-forever/GoblinEyeExport.lua'
+        with self.assertRaisesRegex(ValueError,'AltsForever_Camelot.toc'):
+            install_item_export(addon,helper,self.path/'backups')
+        self.assertFalse((addon/'GoblinEyeExport.lua').exists())
+        self.assertNotIn('GoblinEyeExport.lua',(addon/'AltsForever.toc').read_text())
+
     def test_personal_reset_erases_new_observations(self):
         self.import_save()
         from goblin_eye.auction_policy import reset_personal_data
