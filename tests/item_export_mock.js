@@ -35,13 +35,21 @@ local secretValue={secret=true}
 issecretvalue=function(v) return v==secretValue end
 local cached={[6617]=true,[10288]=false,[9820]=true}
 local calls=0
+local requests={}
 C_Item={
  IsItemDataCachedByID=function(id) return cached[id] end,
+ RequestLoadItemDataByID=function(id) requests[id]=(requests[id] or 0)+1 end,
  GetItemStats=function(l)
    calls=calls+1
    return {ITEM_MOD_INTELLECT_SHORT=l==two and 11 or 7, ITEM_MOD_STAMINA_SHORT=secretValue}
  end
 }
+local tooltipCalls, delayedTooltip=0,true
+C_TooltipInfo={GetHyperlink=function(l)
+ tooltipCalls=tooltipCalls+1
+ if l==two and delayedTooltip then delayedTooltip=false; return nil end
+ return {lines={{leftText="Observed automatic item details"}}}
+end}
 C_Container={GetContainerNumSlots=function(bag) return bag==0 and 2 or 0 end,
  GetContainerItemLink=function(_,slot) return slot==1 and two or three end}
 GameTooltip={IsForbidden=function() return false end,GetItem=function() return "Fixture",one end}
@@ -66,12 +74,16 @@ local key3=three:match("|H(item:[^|]*)|h")
 local key4=four:match("|H(item:[^|]*)|h")
 assert(ns.db.goblinEye.items[key].stats.ITEM_MOD_INTELLECT_SHORT==7)
 assert(ns.db.goblinEye.items[key2].stats.ITEM_MOD_INTELLECT_SHORT==11,"unequipped suffix must be independent")
+assert(#ns.db.goblinEye.items[key].tooltip==1,"equipped tooltip must capture without hovering")
+assert(#ns.db.goblinEye.items[key2].tooltip==1,"delayed tooltip must retry without hover or cache event")
+assert(requests[10288]==1,"uncached item data must be requested once")
 assert(ns.db.goblinEye.items[key].stats.ITEM_MOD_STAMINA_SHORT==nil,"secret values must not be persisted")
 assert(ns.db.goblinEye.items[key3]==nil,"unloaded item must not become empty stats")
 assert(ns.char.goblinEyeGear.slots[13]==false)
 cached[10288]=true
 events.GET_ITEM_INFO_RECEIVED(); flush()
 assert(ns.db.goblinEye.items[key3],"cached unequipped item retry")
+clock=3
 tooltipHook(GameTooltip,{lines={{leftText="+7 Intellect"},{leftText=secretValue,rightText="Requires Level 24"}}})
 assert(#ns.db.goblinEye.items[key].tooltip==2)
 local oldCalls=calls
@@ -85,6 +97,23 @@ tooltipHook(ItemRefTooltip,{lines={{leftText="Observed preview item"}}})
 assert(ns.db.goblinEye.items[key4],"ordinary tooltip may record unequipped preview")
 complete=false; ns.char.goblinEyeGear=nil
 assert(ns.ScanGear(ns.char)==true and ns.char.goblinEyeGear==nil,"incomplete scan cannot establish empty slots")
+-- Automatic work paused during lockdown must resume without hover/equipment input.
+local five=link(5003,1)
+cached[5003]=true
+combat=true; ns.char.gear[2]=five; ns.ScanGear(ns.char); flush()
+local key5=five:match("|H(item:[^|]*)|h")
+assert(ns.db.goblinEye.items[key5]==nil)
+combat=false; complete=true; events.PLAYER_REGEN_ENABLED(); flush()
+assert(ns.db.goblinEye.items[key5].stats.ITEM_MOD_INTELLECT_SHORT==7)
+assert(#ns.db.goblinEye.items[key5].tooltip==1,"deferred automatic tooltip resumes")
+-- Unavailable tooltip service must stop its timed retries, preserving numeric data.
+local six=link(5001,1)
+cached[5001]=true
+C_TooltipInfo.GetHyperlink=function() return nil end
+ns.char.gear[11]=six; ns.ScanGear(ns.char); flush()
+local key6=six:match("|H(item:[^|]*)|h")
+assert(ns.db.goblinEye.items[key6].stats.ITEM_MOD_INTELLECT_SHORT==7)
+assert(#ns.db.goblinEye.items[key6].tooltip==0 and #timers==0,"failed tooltip retry must be bounded")
 local function serialize(v)
  if type(v)=="table" then
   local out={}; for k,x in pairs(v) do out[#out+1]="["..serialize(k).."]="..serialize(x) end
@@ -101,4 +130,4 @@ if(lauxlib.luaL_loadstring(L,to_luastring(fixture+helper+checks))!==lua.LUA_OK |
 lua.lua_getglobal(L,to_luastring('RESULT'));
 const result=to_jsstring(lua.lua_tostring(L,-1));
 if(process.argv[2]) fs.writeFileSync(process.argv[2],result);
-console.log('Alts export Lua checks passed: cached/unequipped variants, secret guards, tooltip debounce, combat guard, retries, incomplete slots.');
+console.log('Alts export Lua checks passed: automatic gear/bag tooltips, bounded warmup, cache requests, deferred capture, variants, secret guards, debounce, incomplete slots.');

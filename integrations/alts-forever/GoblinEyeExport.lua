@@ -5,7 +5,9 @@ if ns.disabled then return end
 local secret = issecretvalue or function() return false end
 local function Plain(v) if not secret(v) then return v end end
 local pending, waiting, seen, tooltipAt, scheduled = {}, {}, {}, {}, false
+local requested, attempts, retryScheduled = {}, {}, false
 local MAX_ITEMS = 1000
+local MAX_ATTEMPTS = 4
 
 local function Key(link)
     link = Plain(link)
@@ -46,7 +48,14 @@ local function Capture(link, data)
     local id = tonumber(key:match("^item:(%d+):"))
     if C_Item and C_Item.IsItemDataCachedByID then
         local ok, cached = pcall(C_Item.IsItemDataCachedByID, id)
-        if not ok or secret(cached) or not cached then return false end
+        if not ok or secret(cached) then return false end
+        if not cached then
+            if not requested[id] and C_Item.RequestLoadItemDataByID then
+                requested[id] = true
+                pcall(C_Item.RequestLoadItemDataByID, id)
+            end
+            return false
+        end
     end
     local clock = GetTime and GetTime() or time()
     if data and tooltipAt[key] and clock - tooltipAt[key] < 2 then return true end
@@ -80,13 +89,38 @@ local function Capture(link, data)
         if count >= MAX_ITEMS and oldestKey then export.items[oldestKey] = nil end
     end
     local previous = export.items[key]
+    -- Read ordinary item tooltip data directly. No visible tooltip, mouse hover,
+    -- game input or WoWAI transport is needed for equipped/bag item details.
+    local automaticTooltip = not data and C_TooltipInfo and C_TooltipInfo.GetHyperlink
+    if automaticTooltip then
+        local tooltipOK, tooltipData = pcall(C_TooltipInfo.GetHyperlink, link)
+        if tooltipOK and not secret(tooltipData) then data = tooltipData end
+    end
     local tooltip = Lines(data)
     if #tooltip == 0 and previous and previous.build == build then tooltip = previous.tooltip or {} end
     export.items[key] = {link = link, itemId = tonumber(key:match("^item:(%d+):")),
         capturedAt = time(), build = build, locale = locale, stats = stats, tooltip = tooltip}
-    seen[key] = true
+    local complete = not automaticTooltip or #tooltip > 0
+    seen[key] = complete or nil
     if data then tooltipAt[key] = clock end
-    return true
+    return complete
+end
+
+local Queue
+local function RetryLater()
+    if retryScheduled or not C_Timer or not C_Timer.After then return end
+    for key in pairs(waiting) do
+        if (attempts[key] or 0) < MAX_ATTEMPTS then
+            retryScheduled = true
+            C_Timer.After(1, function()
+                retryScheduled = false
+                for retryKey, link in pairs(waiting) do
+                    if (attempts[retryKey] or 0) < MAX_ATTEMPTS then Queue(link) end
+                end
+            end)
+            return
+        end
+    end
 end
 
 local function Drain()
@@ -94,8 +128,9 @@ local function Drain()
     if InCombatLockdown and InCombatLockdown() then return end
     local processed = 0
     for key, link in pairs(pending) do
+        attempts[key] = (attempts[key] or 0) + 1
         if not Capture(link) then waiting[key] = link end
-        pending[key] = nil -- retry only after a normal item-info event, never poll indefinitely
+        pending[key] = nil
         processed = processed + 1
         if processed == 4 then break end
     end
@@ -103,9 +138,10 @@ local function Drain()
         scheduled = true
         C_Timer.After(0.05, Drain)
     end
+    RetryLater() -- bounded cache/tooltip warmup; never poll indefinitely
 end
 
-local function Queue(link)
+Queue = function(link)
     local key = Key(link)
     if not key or seen[key] then return end
     -- Bound transient queues as well as the persisted observations.
@@ -171,10 +207,15 @@ ns.On("PLAYER_LOGIN", function()
         if ItemRefTooltip then ItemRefTooltip:HookScript("OnTooltipSetItem", OnItem) end
     end
 end)
-ns.On("GET_ITEM_INFO_RECEIVED", function()
+-- Resume only deferred observation work after lockdown; no combat data is saved.
+ns.On("PLAYER_REGEN_ENABLED", function()
+    if ns.char then ns.ScanGear(ns.char) end
+    for _, link in pairs(pending) do Queue(link) end
+    for _, link in pairs(waiting) do Queue(link) end
+end)
+ns.On("GET_ITEM_INFO_RECEIVED", function(itemID, success)
+    if success == false then return end
     for key, link in pairs(waiting) do
-        waiting[key] = nil
-        Queue(link)
+        if not itemID or tonumber(key:match("^item:(%d+):")) == itemID then Queue(link) end
     end
-    for _, link in pairs(ns.char and ns.char.gear or {}) do Queue(link) end
 end)

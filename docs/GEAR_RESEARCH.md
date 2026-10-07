@@ -14,16 +14,22 @@ Forever interface and scanner contracts first. Original files are backed up
 under `data/addon-backups`. Setup errors appear in source health. No additional
 addon, external catalog, or model download is required.
 
-Restart WoW after the first installation so the changed TOC is discovered.
-Log in normally, then `/reload` or log out to save. Subsequent ordinary saves
+The changed manifest is discovered on the next normal WoW launch. Equipped
+and bag items are captured automatically during Alts' normal scans; hovering
+each item, opening its tooltip, or issuing a manual rescan is not required.
+WoW persists SavedVariables on logout or `/reload`; those ordinary saves
 import automatically while the dashboard runs. CurseForge may replace the TOC
 on an update; the next dashboard startup checks and restores the extension.
 If Alts' scanner contract changes, setup refuses the patch until reviewed.
 
 The extension observes links already encountered through Alts' gear scans,
 container scans, item scoring, or ordinary item tooltips. It uses the client
-item-stat API and passive tooltip callbacks, with cache checks, secret-value
-guards, bounded queues and a tooltip cooldown. It sends no game inputs and
+item-stat API and `C_TooltipInfo.GetHyperlink` to read numeric stats and tooltip
+details directly for those links. Missing cached data is requested once per
+item ID; a batch performs at most four timed attempts and can resume on the
+matching item-data event. Lockdown defers observation work until it ends.
+Passive tooltip callbacks also enrich ordinary previews. Secret-value guards,
+bounded queues and a tooltip cooldown keep the work limited. It sends no game inputs and
 does not query unseen item links, track combat, or read game memory.
 
 It saves up to 1,000 full item-link variants, with numeric API keys, capture
