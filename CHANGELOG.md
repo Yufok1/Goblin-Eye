@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Observe exact equipped and encountered item variants through Alts Forever, with bounded capture and backups; keep WoWAI as conversation only.
+- Import ProfessionDB applied enchant stats, Questie completion caches and all supported Forever Guide tooltip stat keys.
+- Add report preflight, paged equipment/inventory/datasets/evidence, and sourced dungeon membership filters.
+- Keep oversized MCP responses usable and explicitly distinguish missing observations from absent game content.
+
 - Accept AHledger public price tables with either eight legacy fields or nine current fields. Preserve the additional daily sales estimate in market history with explicit provider attribution; unknown estimates remain unknown.
 
 - Restore Goblin Eye grimoire theme and optional private speech runtime (no voice assets distributed).

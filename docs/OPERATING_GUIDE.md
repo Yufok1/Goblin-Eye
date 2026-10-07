@@ -71,8 +71,4 @@ Use the existing `get_character_snapshot` and `get_item_research` tools. Forever
 
 The catalogs can disagree on quality, levels or stats; their assertions stay separate with build and Classic fallback labels. Spell power and Shadow damage are distinct. Duplicate stat keys remain arrays in stats_raw and are omitted from normalized stats rather than summed. Base stats do not resolve bonus IDs, random suffixes or enchants from modern links. The inspected Alts Forever save does not export effective buffed/talented character stats. Do not call an item an upgrade, BiS or a Shadow Wrath item by its name/color alone.
 
-## Equipment and item properties
-
-Use the existing `get_character_snapshot` and `get_item_research` tools. Forever Guide ItemCatalogData.lua, GearData.lua and ItemStatsData.lua import through its existing watcher independently of WoWAI. Character results include explicit slot names, observed item names/links/quality, per-item property variants and shared provenance. Item research keeps properties in compact and full replies. Slots absent from the save remain not_recorded; an explicitly nil slot is recorded_empty. Ranged is separate from Off Hand.
-
-The catalogs can disagree on quality, levels or stats; their assertions stay separate with build and Classic fallback labels. Spell power and Shadow damage are distinct. Duplicate stat keys remain arrays in stats_raw and are omitted from normalized stats rather than summed. Base stats do not resolve bonus IDs, random suffixes or enchants from modern links. The inspected Alts Forever save does not export effective buffed/talented character stats. Do not call an item an upgrade, BiS or a Shadow Wrath item by its name/color alone.
+For exact full-link observations, permanent enchants, Questie completion and report preflight, follow [Reliable gear research](GEAR_RESEARCH.md). These imports use the existing data addons and are independent of WoWAI.

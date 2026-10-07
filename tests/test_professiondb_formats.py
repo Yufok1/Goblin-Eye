@@ -72,6 +72,20 @@ class ProfessionDBFormatTests(unittest.TestCase):
         self.assertEqual(len(dataset.recipes), 2)
         self.assertTrue(all('borrowed_fields' not in r.attributes for r in dataset.recipes))
 
+    def test_applied_enchants_and_recipe_enchants_are_queryable(self):
+        self.addon()
+        path=self.core/'Alchemy.lua'
+        text=path.read_text().replace('craftedItemId=201,','craftedItemId=201,enchantId=254,enchantSlot="CHEST",stats={ITEM_MOD_STAMINA_SHORT=4},')
+        path.write_text(text+'lib:LoadEnchantsCore({[723]={slots={"TWOHAND"},stats={ITEM_MOD_INTELLECT_SHORT=5}}})\n')
+        with (self.locale/'Alchemy.lua').open('a') as f:
+            f.write('\nlib:LoadEnchantsNames({[723]={name="Fixture intellect enchant"}})')
+        ProfessionDBAdapter().import_file(self.db,self.root)
+        from goblin_eye.item_properties import ItemProperties
+        self.assertEqual(ItemProperties(self.db).enchant(254)['applications'][0]['stats'],{'stamina':4})
+        self.assertEqual(ItemProperties(self.db).enchant(723)['applications'][0]['stats'],{'intellect':5})
+        self.assertEqual(ItemProperties(self.db).enchant(999999)['status'],'not_recorded')
+        self.assertFalse(ItemProperties(self.db).enchant(254)['numeric_conflict'])
+
     def test_borrowed_annotations_can_precede_or_follow_enchant_metadata(self):
         for suffix in ('lib:LoadEnchantsCore({})\nlib:LoadBorrowed("requiredSkill","Vanilla",{101})',
                        'lib:LoadBorrowed("requiredSkill","Vanilla",{101})\nlib:LoadEnchantsCore({})'):

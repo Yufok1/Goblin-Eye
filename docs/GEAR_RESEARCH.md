@@ -1,0 +1,83 @@
+# Reliable gear research
+
+Goblin Eye uses existing data addons. WoWAI carries conversation and does not
+retrieve equipment, item stats or quest completion.
+
+## Exact item variants
+
+At dashboard startup, Goblin Eye installs its small, owned
+`integrations/alts-forever/GoblinEyeExport.lua` extension into the existing
+Alts Forever folder and appends it to that addon's TOC. It checks the inspected
+Forever interface and scanner contracts first. Original files are backed up
+under `data/addon-backups`. Setup errors appear in source health. No additional
+addon, external catalog, or model download is required.
+
+Restart WoW after the first installation so the changed TOC is discovered.
+Log in normally, then `/reload` or log out to save. Subsequent ordinary saves
+import automatically while the dashboard runs. CurseForge may replace the TOC
+on an update; the next dashboard startup checks and restores the extension.
+If Alts' scanner contract changes, setup refuses the patch until reviewed.
+
+The extension observes links already encountered through Alts' gear scans,
+container scans, item scoring, or ordinary item tooltips. It uses the client
+item-stat API and passive tooltip callbacks, with cache checks, secret-value
+guards, bounded queues and a tooltip cooldown. It sends no game inputs and
+does not query unseen item links, track combat, or read game memory.
+
+It saves up to 1,000 full item-link variants, with numeric API keys, capture
+time, client build, locale and available tooltip text. Unequipped variants
+count too. Oldest saved observations are evicted at the bound; imported history
+remains in the local database. Empty slots are recorded explicitly only after
+Alts reports a complete gear scan. NPC/loot previews need an ordinary tooltip
+to contribute client-observed details.
+
+This is an observed-variant library, **not a universal numeric suffix catalog**.
+The installed static datasets do not provide every modern bonus combination.
+Unseen combinations remain unknown. A suffix name never supplies a numeric
+bonus by itself. API stat rows do not guarantee complete proc/effect coverage.
+Tooltip-only effects retain their text, without invented stat conversions.
+
+## Tools and evidence
+
+1. Use `list_characters`, then the intended `get_character_snapshot`.
+2. Read `research_preflight`: missing exact stats, tooltip coverage, enchants,
+   unrecorded slots and static catalog conflicts are explicit. Effective buffed
+   or talented character totals are still not exported by the inspected addon.
+3. Follow `equipment_next_offset` with `get_character_equipment`; inventory is
+   separately paged through `get_character_inventory`.
+4. Use `get_item_variants(item_id, item_link=full_link)` for observed numeric
+   rows and tooltip text. Keep exact links, account namespace and build separate.
+   Conflicting observed builds are not silently selected for equipped totals.
+5. Use `get_enchant_evidence` for ProfessionDB's applied-enchant catalog and
+   recipe assertions. Verify slot/build. Do not double-count enchants against
+   full-link API stats without establishing the API's inclusion semantics.
+6. Use `get_character_quests` for Questie's existing personal completion cache.
+   Matching uses the exact account and full character name. File save time is
+   not completion time. Absence does not prove quest eligibility or zero quests.
+7. Page `get_research_datasets`, `search_evidence`, acquisition and world tools
+   using their returned `next_offset`. A partial page cannot establish absence.
+
+Static Forever Guide catalog, gear and tooltip views remain separate. Raw stat
+keys survive import; normalized fields cover the installed renderer's keys.
+Shadow resistance is not Shadow damage. Generic hit/crit ratings are not
+spell-only or percentages. Classic fallback views retain their labels.
+
+Dungeon searches accept sourced dungeon names, keys and slugs. Membership comes
+from Forever Guide's explicit boss and quest associations and can join other
+sources by entity ID. It is incomplete membership, especially for trash mobs.
+Entrance coordinates are never used to place nearby outdoor mobs inside a
+dungeon. Ambiguous names require a more specific label.
+
+Compact MCP responses share provenance and summarize large coordinate arrays.
+Focused world queries provide labeled coordinate samples; cached source
+documents preserve full arrays. Oversized full item aggregations return an
+explicit summary with focused follow-up tools rather than failing as missing
+data. The HTTP item detail remains available.
+
+## Report standards
+
+Resolve actionable gaps with focused tools before ranking upgrades. Report
+unresolved gaps and conflicting sources separately. Never substitute zeros,
+infer suffix amounts, claim complete loot coverage, or report definitive stat
+deltas from incomplete evidence. Check current source health around saves and
+preserve capture time separately from import time.

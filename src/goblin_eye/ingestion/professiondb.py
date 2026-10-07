@@ -52,6 +52,7 @@ class ProfessionDataset:
     fingerprint: str
     files: dict[str, bytes]
     recipes: tuple[RecipeEvidence, ...]
+    enchants: tuple[tuple[int,dict,str], ...]
 
 
 def positive_id(value, field: str) -> int:
@@ -97,6 +98,7 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
     # Deliberately never parse or invoke LoadSyntheticRecipes/GetSyntheticRecipeScroll.
     builds = set(re.findall(r"(?:client )?build (\d+\.\d+\.\d+\.\d+)", teaching_text + acquire_text))
     recipes = []
+    enchant_rows = {}
     for relative in core_paths:
         if relative in (recipe_items_path, acquire_path):
             continue
@@ -123,6 +125,22 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
         names_id, names = read_library_table(read(names_path), "LoadNames", True, ("LoadEnchantsNames",))
         if names_id != profession_id or set(names) != set(core):
             raise ValueError(f"Core/locale identity mismatch: {relative}")
+        if re.search(r'^lib:LoadEnchantsCore\(',text,re.M):
+            _, extra_core = read_library_table(text,'LoadEnchantsCore')
+            _, extra_names = read_library_table(files[names_path].decode('utf-8-sig'),'LoadEnchantsNames')
+            if set(extra_core) != set(extra_names): raise ValueError('Applied-enchant locale mismatch')
+            for enchant_id, values in extra_core.items():
+                positive_id(enchant_id,'applied enchant ID')
+                if not isinstance(values,dict) or set(values)-{'slots','stats','itemId'}:
+                    raise ValueError('Unreviewed applied-enchant fields')
+                if not isinstance(values.get('slots',{}),dict): raise ValueError('Invalid enchant slots table')
+                if values.get('itemId') is not None: positive_id(values['itemId'],'enchant item ID')
+                localized=extra_names[enchant_id]
+                if not isinstance(localized,dict) or not isinstance(localized.get('name'),str):
+                    raise ValueError('Missing applied-enchant name')
+                enchant_rows.setdefault(enchant_id,[]).append({'name':localized['name'],
+                    'slots':list(values.get('slots',{}).values()),'stats_raw':values.get('stats',{}),
+                    'item_id':values.get('itemId'),'raw_reference':f'{relative}#LoadEnchantsCore/{enchant_id}'})
         profession = Path(relative).stem
         if profession == "Firstaid":
             profession = "First Aid"
@@ -161,12 +179,25 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
                 attributes["required_skill_basis"] = "borrowed:" + borrowed[spell_id]["requiredSkill"]
             recipes.append(RecipeEvidence(spell_id, positive_id(profession_id, "profession ID"), profession,
                 localized["name"], output, skill, reagents, teaching_id, attributes, f"{relative}#{spell_id}"))
+            if fields.get('enchantId') is not None:
+                enchant_id=positive_id(fields['enchantId'],'recipe enchant ID')
+                enchant_rows.setdefault(enchant_id,[]).append({'name':localized['name'],'spell_id':spell_id,
+                    'slots':[fields['enchantSlot']] if fields.get('enchantSlot') else [],
+                    'stats_raw':fields.get('stats',{}),'raw_reference':f'{relative}#{spell_id}'})
     if len(builds) != 1 or not recipes:
         raise ValueError("Mixed/missing source builds or empty recipe dataset")
     hashes = {path: hashlib.sha256(body).hexdigest() for path, body in sorted(files.items())}
     identity_hashes = {path: digest for path, digest in hashes.items() if not path.lower().endswith('.toc')}
-    fingerprint = hashlib.sha256(json.dumps(identity_hashes, sort_keys=True).encode()).hexdigest()
-    return ProfessionDataset(root, version.group(1).strip(), builds.pop(), fingerprint, files, tuple(recipes))
+    import math
+    for applications in enchant_rows.values():
+        for application in applications:
+            stats=application['stats_raw']
+            if not isinstance(stats,dict) or any(not isinstance(k,str) or type(v) not in (int,float)
+                or not math.isfinite(v) for k,v in stats.items()): raise ValueError('Invalid applied-enchant stats')
+            if any(not isinstance(slot,str) for slot in application['slots']): raise ValueError('Invalid enchant slot')
+    fingerprint = hashlib.sha256(json.dumps({'files':identity_hashes,'parser':2}, sort_keys=True).encode()).hexdigest()
+    enchants=tuple((key,{'applications':value},f'Enchanting applied enchant/{key}') for key,value in enchant_rows.items())
+    return ProfessionDataset(root, version.group(1).strip(), builds.pop(), fingerprint, files, tuple(recipes),enchants)
 
 
 class ProfessionDBAdapter:
@@ -203,6 +234,8 @@ class ProfessionDBAdapter:
                 (source_id, dataset.fingerprint, dataset.version, dataset.build, now,
                  json.dumps(manifest), json.dumps(LIMITATIONS)))
             dataset_id = cursor.lastrowid
+            connection.executemany('INSERT INTO enchant_facts(dataset_id,enchant_id,attributes_json,raw_reference) VALUES (?,?,?,?)',
+                ((dataset_id,key,json.dumps(value),reference) for key,value,reference in dataset.enchants))
             for relative, body in dataset.files.items():
                 connection.execute("""INSERT OR IGNORE INTO source_documents(source_id, url, retrieved_at, content_type, sha256, body)
                     VALUES (?, ?, ?, 'text/plain; charset=utf-8', ?, ?)""",

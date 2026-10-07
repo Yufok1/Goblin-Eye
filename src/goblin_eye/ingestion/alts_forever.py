@@ -1,4 +1,4 @@
-"""Read inspected Alts Forever 0.9.1 SavedVariables v2; never execute Lua."""
+"""Read inspected Alts Forever SavedVariables v2 and the optional numeric export."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -13,6 +13,7 @@ from goblin_eye.repository import Database
 from .base import AdapterCapability, ImportResult
 from .bounded import read_file, resilient_run
 from .lua_literals import LuaLiteralReader
+from goblin_eye.item_instances import validate_export, import_instances
 
 SOURCE_KEY = "local-alts-forever"
 LIMITATIONS = (
@@ -41,7 +42,7 @@ def _counts(value, label):
 
 
 def parse_alts_file(path: Path) -> dict:
-    text = read_file(path, 16 * 1024 * 1024).decode("utf-8-sig")
+    text = read_file(path, 32 * 1024 * 1024).decode("utf-8-sig")
     reader = LuaLiteralReader(text)
     reader.skip()
     reader.expect("AltsForeverDB")
@@ -55,6 +56,7 @@ def parse_alts_file(path: Path) -> dict:
     chars = root.get("chars")
     if not isinstance(chars, dict):
         raise ValueError("Missing characters table")
+    validate_export(root)  # Validate every variant before any database mutation.
     for key, char in chars.items():
         if not isinstance(key, str) or not key.strip() or not isinstance(char, dict):
             raise ValueError("Invalid character identity")
@@ -87,6 +89,16 @@ def parse_alts_file(path: Path) -> dict:
                 _integer(slot, "equipment slot", 1, 100)
                 if link is not None and (not isinstance(link, str) or not re.search(r"\|Hitem:[1-9]\d*:", link)):
                     raise ValueError("Invalid equipment item link")
+        capture = char.get('goblinEyeGear')
+        if capture is not None:
+            if not isinstance(capture,dict) or not isinstance(capture.get('slots'),dict):
+                raise ValueError('Invalid exported equipment coverage')
+            _integer(capture.get('capturedAt'),'gear capture time',1,253402300799)
+            if set(capture['slots']) != set(range(1,20)):
+                raise ValueError('Equipment coverage must include all 19 explicit slots')
+            if any(v is not False and (not isinstance(v,str) or not re.search(r'\|Hitem:[1-9]\d*:',v))
+                   for v in capture['slots'].values()):
+                raise ValueError('Invalid covered equipment link')
         for field in ("layout", "recipes", "crafts", "reps", "duraSlots"):
             if char.get(field) is not None and not isinstance(char[field], dict):
                 raise ValueError(f"Expected {field} table")
@@ -116,7 +128,7 @@ class AltsForeverAdapter:
         supplies=("character progress", "equipment links and slots", "inventory quantities and layout",
                   "professions", "reputation", "recorded bank/mail/recipes"), needs=("WoW-saved Alts Forever file",),
         documentation_url="https://www.curseforge.com/wow/addons/alts-forever",
-        notes="Inspected installed addon 0.9.1 and a real v2 capture. Missing coverage stays unknown; no game access.")
+        notes="Inspected installed addon 0.10.0 and v2 captures; optional full-link numeric export v1. No game access.")
 
     def import_file(self, database: Database, path: Path) -> ImportResult:
         root = parse_alts_file(path)
@@ -130,6 +142,7 @@ class AltsForeverAdapter:
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
                 (SOURCE_KEY, self.capability.documentation_url, "Saved character evidence; auction workspace is configured separately.", now))
             source_id = connection.execute("SELECT id FROM sources WHERE source_key=?", (SOURCE_KEY,)).fetchone()[0]
+            records += import_instances(connection,namespace,validate_export(root),now,path.resolve().as_uri())
             for name, char in root["chars"].items():
                 body = json.dumps({"schema_version": 2, "character": char, "factions": root.get("factions"),
                                    "recipeInfo": root.get("recipeInfo"), "namespace": namespace},
@@ -149,7 +162,7 @@ class AltsForeverAdapter:
                     level,source_key,source_version,game_build,imported_at,captured_at,evidence_kind,confidence,confidence_basis,
                     raw_reference,sha256,payload_json,limitations_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (f"alts-forever:{namespace}:{name}",name,"unknown","unknown",char["class"],char["level"],SOURCE_KEY,
-                     "SavedVariables v2 (inspected addon 0.9.1)","unknown",now,captured,"observed",0.9,
+                     "SavedVariables v2 (inspected addon 0.10.0)","unknown",now,captured,"observed",0.9,
                      "Direct WoW-saved addon observation; coverage and field freshness vary, not a probability.",
                      reference,digest,body,json.dumps(LIMITATIONS))).lastrowid
                 for slot, link in (char.get("gear") or {}).items():
@@ -166,7 +179,7 @@ class AltsForeverAdapter:
                     connection.executemany("INSERT INTO character_inventory_observations VALUES (?,?,?,?)", rows)
                     records += len(rows)
                 imported += 1
-            if imported:
+            if imported or records:
                 connection.execute("""INSERT INTO imports(adapter_key,source_id,started_at,completed_at,status,file_name,record_count)
                     VALUES (?,?,?,?,'complete',?,?)""", (self.capability.key,source_id,now,now,str(path),records))
         return ImportResult(self.capability.key, SOURCE_KEY, records, imported, LIMITATIONS)

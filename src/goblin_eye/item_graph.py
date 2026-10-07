@@ -112,6 +112,29 @@ class ItemGraph:
             results.append(value)
         return results
 
+    def dataset_page(self,limit=10,offset=0,active=None):
+        integer(limit,'limit',1,100); integer(offset,'offset')
+        if active is not None and type(active) is not bool: raise ValueError('active must be boolean')
+        where=' WHERE d.active=?' if active is not None else ''
+        args=[int(active)] if active is not None else []
+        with self.database.transaction() as c:
+            total=c.execute('SELECT count(*) FROM research_datasets d'+where,args).fetchone()[0]
+            rows=c.execute('''SELECT d.id,d.dataset_key,d.sha256,d.source_version,d.game_build,
+                d.content_phase,d.retrieved_at,d.confidence,d.evidence_kind,d.active,d.limitations_json,
+                s.source_key,s.name source_name,s.url source_url,
+                (SELECT count(*) FROM recipe_facts r WHERE r.dataset_id=d.id) recipe_count,
+                (SELECT count(*) FROM world_entity_facts w WHERE w.dataset_id=d.id) world_entity_count,
+                (SELECT count(*) FROM acquisition_facts a WHERE a.dataset_id=d.id) acquisition_count,
+                (SELECT count(*) FROM item_property_facts p WHERE p.dataset_id=d.id) item_property_count,
+                (SELECT count(*) FROM enchant_facts e WHERE e.dataset_id=d.id) enchant_count
+                FROM research_datasets d JOIN sources s ON s.id=d.source_id'''+where+
+                ' ORDER BY d.active DESC,d.retrieved_at DESC,d.id DESC LIMIT ? OFFSET ?',(*args,limit,offset)).fetchall()
+        records=[]
+        for row in rows:
+            value=dict(row);value['limitations']=json.loads(value.pop('limitations_json'));records.append(value)
+        return dict(records=records,total=total,limit=limit,offset=offset,
+            interpretation='Dataset summary; file manifests are omitted. Inspect cached source documents for original files. Counts are source coverage, not independent verification.')
+
     def acquisition(self, item_id: int, limit: int = 50, offset: int = 0, **filters) -> dict[str, Any]:
         from goblin_eye.research_queries import ResearchQueries
         integer(item_id, "item_id", 1)

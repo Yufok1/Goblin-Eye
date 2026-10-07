@@ -45,10 +45,22 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
     edges = []
     name_only_bosses = 0
     new_loot_rows = 0
+    memberships=[]
+    labels=[]
+    if re.search(r'^ns\.DUNGEONS\s*=',data_text,re.M):
+        for dungeon in _sequence(_assigned_table(data_text,'DUNGEONS'),'DUNGEONS'):
+            if not isinstance(dungeon,dict) or not isinstance(dungeon.get('key'),str) or not isinstance(dungeon.get('en'),str):
+                raise ValueError('Invalid dungeon label')
+            labels.append((dungeon['key'],dungeon['en'],dungeon.get('slug',dungeon['key']),
+                json.dumps({k:dungeon.get(k) for k in ('min','max','map','x','y','loce') if k in dungeon}),
+                'DungeonData.lua#DUNGEONS/'+dungeon['key']))
     for dungeon_key, bosses in _assigned_table(loot_text, "LOOT").items():
         for boss in _sequence(bosses, f"LOOT[{dungeon_key}]"):
             if not isinstance(boss, dict) or not isinstance(boss.get("n"), str):
                 raise ValueError("Invalid dungeon boss row")
+            if boss.get('id') is not None:
+                memberships.append((dungeon_key,'npc',positive_id(boss['id'],'boss NPC ID'),
+                    f'DungeonLoot.lua#ns.LOOT[{dungeon_key}]/{boss["id"]}'))
             new_items = [item for item in _sequence(boss.get("items"), "boss items")
                          if isinstance(item, dict) and item.get("new") is True]
             if not new_items: continue
@@ -79,6 +91,8 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
             name_only_quests += 1
             continue
         positive_id(quest_id, "dungeon quest ID")
+        if isinstance(quest.get('z'),str):
+            memberships.append((quest['z'],'quest',quest_id,f'DungeonData.lua#ns.DQ[{quest_id}]'))
         rewards = quest.get("rw")
         if not isinstance(rewards, dict) or rewards.get("fv") is not True:
             continue
@@ -101,11 +115,12 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
     for item_id, name in item_names.items():
         entities[("item", item_id)] = (name, {"forever_new_dungeon_loot": True}, f"DungeonLoot.lua#item/{item_id}")
     hashes = {name: hashlib.sha256(body).hexdigest() for name, body in files.items()}
-    fingerprint = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps({'files':hashes,'parser':2}, sort_keys=True).encode()).hexdigest()
     entity_rows = tuple((kind, entity_id, name, json.dumps(attributes, ensure_ascii=False), raw)
                         for (kind, entity_id), (name, attributes, raw) in entities.items())
     return {"root": root, "files": files, "hashes": hashes, "fingerprint": fingerprint,
             "version": version.group(1).strip(), "entities": entity_rows, "edges": tuple(edges),
+            "labels":labels,"memberships":memberships,
             "counts": {"new_loot_rows": new_loot_rows, "name_only_bosses": name_only_bosses,
                        "verified_quests": verified_quests, "verified_reward_rows": verified_reward_rows,
                        "name_only_quests": name_only_quests}}
@@ -144,6 +159,12 @@ class ForeverGuideDungeonAdapter:
                 VALUES (?,'dungeon-overrides',?,?,NULL,'Forever',?,0.7,'extracted',?,?)""",
                 (source_id, data["fingerprint"], data["version"], now, json.dumps(manifest), json.dumps(LIMITATIONS)))
             dataset_id = cursor.lastrowid
+            connection.executemany('''INSERT INTO dungeon_labels
+                (dataset_id,dungeon_key,name,slug,attributes_json,raw_reference) VALUES (?,?,?,?,?,?)''',
+                ((dataset_id,*row) for row in data['labels']))
+            connection.executemany('''INSERT OR IGNORE INTO dungeon_memberships
+                (dataset_id,dungeon_key,entity_type,entity_id,raw_reference) VALUES (?,?,?,?,?)''',
+                ((dataset_id,*row) for row in data['memberships']))
             connection.executemany("""INSERT INTO world_entity_facts(dataset_id,entity_type,entity_id,name,attributes_json,raw_reference)
                 VALUES (?,?,?,?,?,?)""", ((dataset_id, *row) for row in data["entities"]))
             connection.executemany("""INSERT INTO acquisition_facts(dataset_id,item_id,method,entity_type,entity_id,probability,

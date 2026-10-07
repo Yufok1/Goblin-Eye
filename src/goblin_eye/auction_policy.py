@@ -150,6 +150,9 @@ def reset_auctions(database, auctionator_paths=(), *, clear_characters=False):
             c.execute('DELETE FROM character_inventory_observations')
             c.execute('DELETE FROM character_item_observations')
             c.execute('DELETE FROM character_snapshots')
+            for table in ('item_instance_facts','character_quest_snapshots'):
+                counts[table]=c.execute('SELECT count(*) FROM '+table).fetchone()[0]
+                c.execute('DELETE FROM '+table)
             c.execute("DELETE FROM imports WHERE source_id IN (SELECT id FROM sources WHERE source_key='local-alts-forever')")
         source_id=c.execute("SELECT id FROM sources WHERE source_key='local-ahledger'").fetchone()[0]
         local_market(c,source_id,now)

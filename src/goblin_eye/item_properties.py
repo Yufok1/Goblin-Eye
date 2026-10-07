@@ -27,5 +27,28 @@ class ItemProperties:
 
     def get(self, item_id):
         items, evidence = self.get_many([item_id])
-        return dict(status="recorded" if item_id in items else "not_recorded", variants=items.get(item_id,{}),evidence=evidence,
+        from .item_instances import ItemInstances
+        observed = ItemInstances(self.database).page(item_id,limit=3)
+        return dict(status="recorded" if item_id in items or observed['total'] else "not_recorded",
+            variants=items.get(item_id,{}),evidence=evidence,observed_variants=observed,
             interpretation="Separate sourced base-item variants. Inspect build and conflicts; no suffix, enchant or live character totals are inferred.")
+
+    def enchant(self,enchant_id):
+        from .item_instances import normalize_stats
+        from .validation import integer
+        integer(enchant_id,'enchant_id',1)
+        with self.database.transaction() as c:
+            rows=c.execute('''SELECT e.*,d.game_build,d.source_version,d.retrieved_at,s.source_key
+                FROM enchant_facts e JOIN research_datasets d ON d.id=e.dataset_id JOIN sources s ON s.id=d.source_id
+                WHERE d.active=1 AND e.enchant_id=? ORDER BY d.retrieved_at DESC''',(enchant_id,)).fetchall()
+        assertions=[]
+        for row in rows:
+            data=json.loads(row['attributes_json'])
+            for app in data['applications']:
+                assertions.append({**app,'stats':normalize_stats(app['stats_raw']),
+                    'source_key':row['source_key'],'game_build':row['game_build'],
+                    'source_version':row['source_version'],'retrieved_at':row['retrieved_at']})
+        stats={json.dumps(v['stats_raw'],sort_keys=True) for v in assertions if v['stats_raw']}
+        return {'enchant_id':enchant_id,'status':'recorded' if assertions else 'not_recorded',
+            'numeric_conflict':len(stats)>1,'applications':assertions,
+            'interpretation':'Permanent enchant source assertions; application recipes may differ by slot. Do not double-count against full-link API stats.'}

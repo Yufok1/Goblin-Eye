@@ -28,7 +28,13 @@ GEAR_STATS = {"str":"strength", "agi":"agility", "sta":"stamina", "int":"intelle
     "shit":"spell_hit_rating", "scrit":"spell_crit_rating", "shaste":"spell_haste_rating"}
 TOOLTIP_STATS = {"str":"strength", "agi":"agility", "sta":"stamina", "int":"intellect", "spi":"spirit",
     "splpwr":"spell_power", "spldmg":"spell_damage", "splheal":"healing_power", "shares":"shadow_resistance",
-    "manargn":"mana_per_5_seconds", "healthrgn":"health_per_5_seconds", "splpen":"spell_penetration"}
+    "manargn":"mana_per_5_seconds", "healthrgn":"health_per_5_seconds", "splpen":"spell_penetration",
+    "atkpwr":"attack_power", "rgdatkpwr":"ranged_attack_power", "feratkpwr":"feral_attack_power",
+    "critstrkrtng":"crit_rating", "hitrtng":"hit_rating", "hastertng":"haste_rating",
+    "defrtng":"defense_rating", "dodgertng":"dodge_rating", "parryrtng":"parry_rating",
+    "blockrtng":"block_rating", "exprtng":"expertise_rating", "armorpenrtng":"armor_penetration_rating",
+    "armorbonus":"bonus_armor", "holres":"holy_resistance", "firres":"fire_resistance",
+    "natres":"nature_resistance", "frores":"frost_resistance", "arcres":"arcane_resistance"}
 
 
 def stat_values(value, labels):
@@ -163,7 +169,9 @@ class ForeverGuideItemAdapter:
             raise ValueError("Unreviewed ForeverGuide interface")
         version = re.search(r"^## Version:\s*(.+)$", toc, re.M)
         hashes = {name: hashlib.sha256(body).hexdigest() for name, body in files.items()}
-        digest = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
+        # A parser revision must reimport unchanged source bytes. Keep source hashes
+        # in the manifest; dataset identity also covers interpretation version.
+        digest = hashlib.sha256(json.dumps({'files':hashes,'parser':2}, sort_keys=True).encode()).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
         with database.transaction() as conn:
             existing = conn.execute("SELECT d.id FROM research_datasets d JOIN sources s ON s.id=d.source_id WHERE s.source_key=? AND d.sha256=? AND d.active=1", (SOURCE_KEY,digest)).fetchone()
