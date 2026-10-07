@@ -34,8 +34,10 @@ def parse_price_table(body: bytes, expected_market: str | None = None):
         raise ValueError('Price table count mismatch')
     seen = set()
     for row in rows:
-        if len(row) != 8:
-            raise ValueError('Unsupported AHledger price row')
+        # AHL1 originally had eight fields; the current feed appends estimated
+        # units sold per day times ten. Older cached tables remain valid.
+        if len(row) not in (8, 9):
+            raise ValueError(f'Unsupported AHledger price row: expected 8 or 9 fields, got {len(row)}')
         item_id = int(row[0]); integer(item_id,'item_id',1)
         if item_id in seen: raise ValueError('Duplicate price-table item')
         seen.add(item_id)
@@ -52,10 +54,11 @@ def public_capture(c, source_id, market_id, document_id, body, retrieved_at, rec
         values = [int(v) if v else None for v in row]
         points.append(dict(item_key=row[0],item_id=values[0],observed_date=observed[:10],provider_market=market,
             minimum_copper=values[2],median_copper=values[1],available_quantity=values[3],
-            provider_median_7d=values[4],provider_median_30d=values[5],provider_low_30d=values[6],provider_high_30d=values[7]))
+            provider_median_7d=values[4],provider_median_30d=values[5],provider_low_30d=values[6],provider_high_30d=values[7],
+            provider_estimated_units_sold_per_day=(values[8] / 10 if len(values) == 9 and values[8] is not None else None)))
     return record_capture(c,source_id,market_id,hashlib.sha256(body).hexdigest(),observed,retrieved_at,
                           'source_table',points,document_id,period=period,recovered=recovered,
-                          limitations=['AHledger Forever community reference; not a personal scan or completed sale. Public markets remain separate; correspondence to the local economy is not assumed. Provider rolling metrics retain provider semantics.'])
+                          limitations=['AHledger Forever community reference; not a personal scan or completed sale. Public markets remain separate; correspondence to the local economy is not assumed. Provider rolling metrics retain provider semantics. Estimated units sold per day is an AHledger estimate, not confirmed sales.'])
 
 def recover_history(database):
     from goblin_eye.auction_policy import reject_external_auctions

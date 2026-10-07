@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Accept AHledger public price tables with either eight legacy fields or nine current fields. Preserve the additional daily sales estimate in market history with explicit provider attribution; unknown estimates remain unknown.
+
 - Restore Goblin Eye grimoire theme and optional private speech runtime (no voice assets distributed).
 - Populate existing character/item tools from installed Forever Guide item catalogs, keeping stat variants, conflicts, source builds and Classic fallbacks visible.
 - Preserve explicit equipment slots and separate unavailable character totals from base item stats. No WoWAI equipment requests or gameplay access.
