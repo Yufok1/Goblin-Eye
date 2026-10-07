@@ -18,12 +18,12 @@ from goblin_eye.item_instances import validate_export, import_instances
 SOURCE_KEY = "local-alts-forever"
 LIMITATIONS = (
     "Saved addon observations are not live game state; import time is not capture time.",
-    "Alts Forever v2 exports full character names, not realm, race or client build; those fields remain unknown.",
+    "Base Alts Forever v2 omits realm/race/build; the optional character-sheet observation supplies client-reported metadata without establishing auction region or ruleset.",
     "Bank contents require visiting a banker; mail requires opening the mailbox; recipes require opening profession windows.",
     "The character updated timestamp does not independently date each inventory, gear or profession observation. Bank bankAt is retained separately.",
     "Absent fields mean unknown/unscanned. Empty mail alone does not establish a complete mailbox survey.",
     "Item links and explicit equipment slots are preserved; enchant and random-suffix interpretations are not verified for this build.",
-    "Talents, quest completion, combat, movement and sale completion are not supplied by this adapter.",
+    "Optional character-sheet and completed-quest observations are timestamped separately. Combat, movement and sale completion are not supplied.",
 )
 
 
@@ -64,6 +64,8 @@ def parse_alts_file(path: Path) -> dict:
             raise ValueError("Character name/key mismatch or missing class")
         if char.get("faction") not in ("Horde", "Alliance", None):
             raise ValueError("Unreviewed faction")
+        from goblin_eye.character_capture import validate_character_capture
+        validate_character_capture(char)
         _integer(char.get("level"), "level", 1, 1000)
         for field in ("updated", "seen", "playedAt", "bankAt"):
             if char.get(field) is not None:
@@ -155,14 +157,16 @@ class AltsForeverAdapter:
                 digest = hashlib.sha256(json.dumps(canonical(json.loads(body)), ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
                 if connection.execute("SELECT 1 FROM character_snapshots WHERE sha256=?", (digest,)).fetchone():
                     continue
-                captured = (datetime.fromtimestamp(char["updated"], timezone.utc).isoformat()
-                            if char.get("updated") else None)
+                times=[char['updated']] if char.get('updated') else []
+                times.extend(char[k]['capturedAt'] for k in ('goblinEyeCharacter','goblinEyeQuests','goblinEyeGear') if char.get(k))
+                captured = datetime.fromtimestamp(max(times),timezone.utc).isoformat() if times else None
+                identity=char.get('goblinEyeCharacter',{})
                 reference = path.resolve().as_uri() + "#AltsForeverDB/chars/" + name
                 snapshot_id = connection.execute("""INSERT INTO character_snapshots(character_key,name,realm,race,class_token,
                     level,source_key,source_version,game_build,imported_at,captured_at,evidence_kind,confidence,confidence_basis,
                     raw_reference,sha256,payload_json,limitations_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (f"alts-forever:{namespace}:{name}",name,"unknown","unknown",char["class"],char["level"],SOURCE_KEY,
-                     "SavedVariables v2 (inspected addon 0.10.0)","unknown",now,captured,"observed",0.9,
+                    (f"alts-forever:{namespace}:{name}",name,identity.get('realm') or 'unknown',identity.get('race') or 'unknown',char["class"],char["level"],SOURCE_KEY,
+                     "SavedVariables v2 (inspected addon 0.10.0)",identity.get('build') or 'unknown',now,captured,"observed",0.9,
                      "Direct WoW-saved addon observation; coverage and field freshness vary, not a probability.",
                      reference,digest,body,json.dumps(LIMITATIONS))).lastrowid
                 for slot, link in (char.get("gear") or {}).items():

@@ -29,8 +29,16 @@ class ItemProperties:
         items, evidence = self.get_many([item_id])
         from .item_instances import ItemInstances
         observed = ItemInstances(self.database).page(item_id,limit=3)
+        from .character_capture import COMPARISON_POLICY
+        variants=items.get(item_id,{})
+        conflicts=[]
+        keys=set().union(*(v.get('stats',{}) for v in variants.values()))
+        for key in sorted(keys):
+            values={name:v['stats'][key] for name,v in variants.items() if key in v.get('stats',{})}
+            if len(set(values.values()))>1: conflicts.append({'stat':key,'assertions':values})
         return dict(status="recorded" if item_id in items or observed['total'] else "not_recorded",
             variants=items.get(item_id,{}),evidence=evidence,observed_variants=observed,
+            stat_conflicts=conflicts,comparison_policy=COMPARISON_POLICY,
             interpretation="Separate sourced base-item variants. Inspect build and conflicts; no suffix, enchant or live character totals are inferred.")
 
     def enchant(self,enchant_id):

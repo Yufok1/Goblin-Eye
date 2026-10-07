@@ -29,8 +29,9 @@ Alts Forever observations update when WoW saves after /reload or logout.
 Equipment slots are explicit; bags have quantities. Bank/mail/recipes need
 their corresponding windows opened. Missing data is unknown and an empty
 mail object alone does not prove coverage. Exported full names must not be
-split into character and realm. Realm, race and build are not exported by this
-inspected format. Refresh source health after a new save.
+split into character and realm. The optional Alts extension records client
+realm/race/build and timestamped character-sheet/quest observations; the base
+save omits those fields. Refresh source health after a new save.
 
 The dashboard automatically imports installed Auctionator, AHledger, Alts
 Forever, ProfessionDB, Forever Guide, QuestieDB, and Mapzeroth when enabled and
@@ -69,6 +70,6 @@ there is no embedded AI model or game automation. See IN_GAME_CHAT.md. Every in-
 
 Use the existing `get_character_snapshot` and `get_item_research` tools. Forever Guide ItemCatalogData.lua, GearData.lua and ItemStatsData.lua import through its existing watcher independently of WoWAI. Character results include explicit slot names, observed item names/links/quality, per-item property variants and shared provenance. Item research keeps properties in compact and full replies. Slots absent from the save remain not_recorded; an explicitly nil slot is recorded_empty. Ranged is separate from Off Hand.
 
-The catalogs can disagree on quality, levels or stats; their assertions stay separate with build and Classic fallback labels. Spell power and Shadow damage are distinct. Duplicate stat keys remain arrays in stats_raw and are omitted from normalized stats rather than summed. Base stats do not resolve bonus IDs, random suffixes or enchants from modern links. The inspected Alts Forever save does not export effective buffed/talented character stats. Do not call an item an upgrade, BiS or a Shadow Wrath item by its name/color alone.
+The catalogs can disagree on quality, levels or stats; their assertions stay separate with build and Classic fallback labels. Spell power, spell damage and school damage stay distinct unless equivalence is verified. Duplicate stat keys remain arrays in stats_raw and are omitted from normalized stats rather than summed. Base stats do not resolve bonus IDs, random suffixes or enchants from modern links. The optional Alts extension supplies timestamped client item and character-sheet observations; unsupported or uncaptured fields remain unknown. Do not call an item an upgrade, BiS or a Shadow Wrath item by its name/color alone.
 
 For exact full-link observations, permanent enchants, Questie completion and report preflight, follow [Reliable gear research](GEAR_RESEARCH.md). These imports use the existing data addons and are independent of WoWAI.

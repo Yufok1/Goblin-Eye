@@ -36,7 +36,9 @@ class CharacterStore:
             "refresh_instructions": "Alts Forever imports automatically while the dashboard runs, after WoW saves on /reload or logout. Visit bank/mail and open profession windows before saving to record those categories. Missing categories remain unknown.",
         }
 
-    def get(self, snapshot_id: int) -> dict[str, Any] | None:
+    def get(self, snapshot_id: int, talent_limit=20, talent_offset=0) -> dict[str, Any] | None:
+        from goblin_eye.validation import integer
+        integer(talent_limit,'talent_limit',1,100); integer(talent_offset,'talent_offset')
         if type(snapshot_id) is not int or snapshot_id < 1:
             raise ValueError("snapshot_id must be a positive integer")
         with self.database.transaction() as connection:
@@ -83,18 +85,33 @@ class CharacterStore:
                     observed=ItemInstances(self.database).page(item['item_id'],item_link=item['item_link'],
                         namespace=result['source_payload']['namespace'],limit=10)['records']
                     # Never silently choose between observations from different builds.
-                    if len({v['game_build'] for v in observed})==1 and observed:
-                        item['instance_stats']=observed[0]
+                    selected=ItemInstances(self.database).page(item['item_id'],item_link=item['item_link'],
+                        namespace=result['source_payload']['namespace'],game_build=result['game_build'],limit=1)['records'] if result.get('game_build') else observed
+                    if len({v['game_build'] for v in selected})==1 and selected:
+                        item['instance_stats']=selected[0]
+                        item['observed_item_metadata']=selected[0].get('metadata',{})
+                        if not item.get('equipped_name') and item['observed_item_metadata'].get('name'):
+                            item['equipped_name']=item['observed_item_metadata']['name']
                         item['instance_stats_status']='api_reported'
                         item['instance_stats_note']='Numeric rows observed for this full item link; tooltip/effect coverage and enchant API semantics must be checked separately.'
                     elif observed:
-                        item['instance_stats_status']='conflicting_observed_builds'
+                        item['instance_stats_status']='different_observed_build' if result.get('game_build') else 'conflicting_observed_builds'
                 conflicts=[]
                 for field in ('quality','required_level','item_level'):
                     assertions={view:p[field] for view,p in item['item_properties'].items() if p.get(field) is not None}
                     if len(set(assertions.values()))>1:
                         conflicts.append({'field':field,'assertions':assertions})
                 if conflicts: item['source_conflicts']=conflicts
+                for conflict in conflicts:
+                    field={'quality':'quality_id','item_level':'item_level','required_level':'required_level'}[conflict['field']]
+                    observed_value=item.get('observed_item_metadata',{}).get(field)
+                    if observed_value is not None:
+                        conflict['equipped_comparison_uses']={'value':observed_value,'field':field,'basis':'current-build client observation for exact link'}
+                stat_fields=set().union(*(p.get('stats',{}) for p in item['item_properties'].values()))
+                for field in sorted(stat_fields):
+                    assertions={view:p['stats'][field] for view,p in item['item_properties'].items() if field in p.get('stats',{})}
+                    if len(set(assertions.values()))>1:
+                        item.setdefault('source_conflicts',[]).append({'field':'stats.'+field,'assertions':assertions})
             result["items"].extend({**dict(item), "ordinal": None, "slot_id": None,
                 "enchant_id": None, "random_suffix": None} for item in inventory)
             result["inventory"] = [dict(item) for item in inventory]
@@ -111,8 +128,9 @@ class CharacterStore:
                     if saved is False and slot['slot_id'] not in by_slot:
                         slot['status']='recorded_empty'
                     slot['captured_at']=datetime.fromtimestamp(capture['capturedAt'],timezone.utc).isoformat()
-            result['character_stats'] = {'status':'not_recorded',
-                'reason':'Inspected Alts Forever save does not export effective character stats. Static item stats are not buffed/talented character totals.'}
+            from goblin_eye.character_capture import sheet, COMPARISON_POLICY
+            result['character_stats']=sheet(char,result['raw_reference'],talent_limit,talent_offset)
+            result['stat_comparison_policy']=COMPARISON_POLICY
             result["money_copper"] = char.get("money")
             result["money_display"] = {"money_copper": money_label(char["money"])} if char.get("money") is not None else {}
             result["coverage"] = {field: {"status": "recorded" if field in char else "not_recorded",
@@ -124,7 +142,7 @@ class CharacterStore:
             result["coverage"]["mail"]["status"] = "recorded_empty_completeness_unknown" if char.get("mail") == {} else result["coverage"]["mail"]["status"]
             quests=self.quests(snapshot_id,limit=1)
             result['quest_completion']={k:quests.get(k) for k in
-                ('status','total','file_saved_at','imported_at','raw_reference','interpretation')}
+                ('status','total','captured_at','file_saved_at','imported_at','source_key','freshness','raw_reference','interpretation')}
             gaps=[]
             for item in result['items']:
                 if item['location']!='equipped': continue
@@ -135,10 +153,19 @@ class CharacterStore:
                 if item.get('enchant_evidence',{}).get('numeric_conflict'): issues.append('enchant_numeric_conflict')
                 if item.get('source_conflicts'): issues.append('static_catalog_conflict')
                 if issues: gaps.append({'slot_id':item['slot_id'],'slot_name':item['slot_name'],'item_id':item['item_id'],'issues':issues})
+            blockers=[g for g in gaps if 'exact_full_link_stats_not_captured' in g['issues']]
+            blocking_reasons=[]
+            if blockers: blocking_reasons.append('equipped_full_link_capture_missing')
+            if result['character_stats']['status']=='not_recorded': blocking_reasons.append('character_sheet_capture_missing')
             result['research_preflight']={'equipment_gaps':gaps,
+                'audit_readiness':'blocked' if blocking_reasons else 'ready_for_source_qualified_comparison',
+                'blocking_reasons':blocking_reasons,
+                'blocking_slots':[g['slot_name'] for g in blockers],
                 'unrecorded_slots':[s['slot_name'] for s in result['equipment_slots'] if s['status']=='not_recorded'],
-                'quest_completion_status':quests['status'],'effective_character_totals':'not_recorded',
-                'instructions':'Resolve these gaps before claiming a complete audit. Read get_item_variants for exact links and tooltip text, get_character_quests for completed IDs. Page acquisition results, verify build/requirements/faction and source conflicts. Missing, failed and not-captured data are distinct; do not invent zeros or definitive upgrade deltas.'}
+                'quest_completion_status':quests['status'],'quest_freshness':quests.get('freshness'),
+                'effective_character_totals':result['character_stats']['status'],
+                'talents_status':result['character_stats'].get('talents',{}).get('status','not_recorded'),
+                'instructions':'If audit_readiness is blocked, diagnose capture/source health and report the blocking slots before broad upgrade research; do not launch another full conditional gear audit unless the user explicitly wants it. Current-build exact-link observations take precedence for equipped totals; static conflicts remain visible. Never subtract spell_damage from spell_power or Shadow resistance from Shadow damage. For crafted targets read get_recipe_evidence and learning_plan, page teaching-item acquisition, and verify crafter/skill/material availability. No manual tooltip hover or rescan is needed. Unknown fields stay unknown.'}
         from goblin_eye.auction_policy import context
         result["auction_context"] = context(self.database)
         result["market_key"] = result["auction_context"]["market_key"]
@@ -150,18 +177,32 @@ class CharacterStore:
         from goblin_eye.validation import integer
         integer(snapshot_id,'snapshot_id',1); integer(limit,'limit',1,100); integer(offset,'offset')
         with self.database.transaction() as c:
-            snapshot=c.execute('SELECT name,payload_json,source_key FROM character_snapshots WHERE id=?',(snapshot_id,)).fetchone()
+            snapshot=c.execute('SELECT name,payload_json,source_key,captured_at,imported_at,raw_reference FROM character_snapshots WHERE id=?',(snapshot_id,)).fetchone()
             if not snapshot: raise ValueError('Character snapshot not found')
             payload=json.loads(snapshot['payload_json'])
             namespace=payload.get('namespace')
             row=c.execute('''SELECT * FROM character_quest_snapshots WHERE namespace=? AND character_name=?
                 ORDER BY file_saved_at DESC,id DESC LIMIT 1''',(namespace,snapshot['name'])).fetchone()
+        capture=payload.get('character',{}).get('goblinEyeQuests')
+        if capture:
+            observed=datetime.fromtimestamp(capture['capturedAt'],timezone.utc).isoformat()
+            if not row or observed>=row['file_saved_at']:
+                ids=sorted(int(k) for k,v in capture['completed'].items() if v)
+                age=max(0,(datetime.now(timezone.utc)-datetime.fromisoformat(observed)).total_seconds())
+                return dict(status='recorded',records=[{'quest_id':v,'completed':True} for v in ids[offset:offset+limit]],
+                    total=len(ids),offset=offset,limit=limit,captured_at=observed, file_saved_at=None,
+                    imported_at=snapshot['imported_at'], source_key='local-alts-forever',
+                    freshness={'age_seconds':int(age),'status':'stale' if age>300 else 'recent','timestamp_basis':'client completion query capture time'},
+                    raw_reference=snapshot['raw_reference']+'/goblinEyeQuests',
+                    interpretation='Client completed-quest list captured automatically through Alts. Absence does not establish quest eligibility; faction, level, active quest log and prerequisites still require evidence.')
         if not row:
             return dict(status='not_captured',records=[],total=0,offset=offset,limit=limit,
                 interpretation='No Questie completion cache matches this exact account and full character name. Zero records does not mean zero completed quests.')
         ids=json.loads(row['payload_json'])['completed']
+        age=max(0,(datetime.now(timezone.utc)-datetime.fromisoformat(row['file_saved_at'])).total_seconds())
         return dict(status='recorded',records=[{'quest_id':v,'completed':True} for v in ids[offset:offset+limit]],
             total=len(ids),offset=offset,limit=limit,file_saved_at=row['file_saved_at'],imported_at=row['imported_at'],
+            source_key='local-questie',freshness={'age_seconds':int(age),'status':'stale' if age>300 else 'recent','timestamp_basis':'Questie save-file time, not a completion query timestamp'},
             raw_reference=row['raw_reference'],interpretation='Questie saved completion assertions. File time is not completion time; absence does not prove eligibility. Match static quest IDs and faction/prerequisites separately.')
 
     def equipment(self,snapshot_id,limit=10,offset=0):

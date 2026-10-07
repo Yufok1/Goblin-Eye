@@ -8,7 +8,10 @@ const fixture = `
 local ns = {db = {v=2,chars={}}, char={name="Fixture",class="WARLOCK",level=26,faction="Horde",gear={}}}
 ns.db.chars.Fixture=ns.char
 local events, timers = {}, {}
-ns.On=function(event,fn) events[event]=fn end
+ns.On=function(event,fn)
+ local previous=events[event]
+ events[event]=previous and function(...) previous(...); fn(...) end or fn
+end
 local complete=true
 ns.ScanGear=function(c) return not complete end
 local scanned=0
@@ -39,6 +42,7 @@ local requests={}
 C_Item={
  IsItemDataCachedByID=function(id) return cached[id] end,
  RequestLoadItemDataByID=function(id) requests[id]=(requests[id] or 0)+1 end,
+ GetItemInfo=function() return "Observed Item",nil,2,29,24,"Armor","Cloth",1,"INVTYPE_CHEST" end,
  GetItemStats=function(l)
    calls=calls+1
    return {ITEM_MOD_INTELLECT_SHORT=l==two and 11 or 7, ITEM_MOD_STAMINA_SHORT=secretValue}
@@ -55,6 +59,25 @@ C_Container={GetContainerNumSlots=function(bag) return bag==0 and 2 or 0 end,
 GameTooltip={IsForbidden=function() return false end,GetItem=function() return "Fixture",one end}
 ItemRefTooltip={IsForbidden=function() return false end,GetItem=function() return "Fixture",four end}
 Enum={TooltipDataType={Item=1}}
+UnitHealthMax=function() return 900 end
+UnitPowerMax=function() return 1200 end
+UnitStat=function(_,i) return i*10,i*10+5 end
+UnitArmor=function() return 120,140 end
+GetSpellBonusDamage=function(school) return school==6 and 43 or 9 end
+GetSpellCritChance=function() return 3.5 end
+GetSpellHitModifier=function() return 1 end
+GetManaRegen=function() return 5,1 end
+UnitRace=function() return "Orc","Orc" end
+GetRealmName=function() return "Fixture Realm" end
+C_QuestLog={GetAllCompletedQuestIDs=function() return {843,846,849} end}
+C_Traits={GetConfigsByType=function() return {100} end,
+ GetConfigInfo=function() return {treeIDs={200}} end,
+ GetTreeNodes=function() return {301,302} end,
+ GetNodeInfo=function(_,id) return {currentRank=id==301 and 3 or 0,activeEntry={entryID=400}} end,
+ GetEntryInfo=function() return {definitionID=500} end,
+ GetDefinitionInfo=function() return {spellID=600} end}
+C_Spell={GetSpellInfo=function() return {name="Observed Talent"} end}
+C_UnitAuras={GetAuraDataByIndex=function(_,i) if i==1 then return {spellId=700,name="Observed Buff",applications=1} end end}
 local tooltipHook
 TooltipDataProcessor={AddTooltipPostCall=function(_,fn) tooltipHook=fn end}
 local function loadAddon(...)
@@ -75,6 +98,7 @@ local key4=four:match("|H(item:[^|]*)|h")
 assert(ns.db.goblinEye.items[key].stats.ITEM_MOD_INTELLECT_SHORT==7)
 assert(ns.db.goblinEye.items[key2].stats.ITEM_MOD_INTELLECT_SHORT==11,"unequipped suffix must be independent")
 assert(#ns.db.goblinEye.items[key].tooltip==1,"equipped tooltip must capture without hovering")
+assert(ns.db.goblinEye.items[key].metadata.required_level==24,"client metadata must be captured generically")
 assert(#ns.db.goblinEye.items[key2].tooltip==1,"delayed tooltip must retry without hover or cache event")
 assert(requests[10288]==1,"uncached item data must be requested once")
 assert(ns.db.goblinEye.items[key].stats.ITEM_MOD_STAMINA_SHORT==nil,"secret values must not be persisted")
@@ -114,6 +138,21 @@ ns.char.gear[11]=six; ns.ScanGear(ns.char); flush()
 local key6=six:match("|H(item:[^|]*)|h")
 assert(ns.db.goblinEye.items[key6].stats.ITEM_MOD_INTELLECT_SHORT==7)
 assert(#ns.db.goblinEye.items[key6].tooltip==0 and #timers==0,"failed tooltip retry must be bounded")
+events.PLAYER_ENTERING_WORLD(); flush()
+assert(ns.char.goblinEyeCharacter.stats.shadow_damage==43)
+assert(ns.char.goblinEyeCharacter.stats.intellect==45)
+assert(ns.char.goblinEyeCharacter.talents.nodes[1].spellID==600)
+assert(ns.char.goblinEyeCharacter.buffs.records[1].spellID==700)
+assert(ns.char.goblinEyeQuests.completed[849]==true)
+local before=ns.char.goblinEyeCharacter
+combat=true; events.UNIT_STATS("player"); events.QUEST_LOG_UPDATE(); flush()
+assert(ns.char.goblinEyeCharacter==before,"never capture character-sheet telemetry in combat")
+combat=false
+GetSpellHitModifier=function() return secretValue end
+events.UNIT_STATS("target"); flush()
+assert(ns.char.goblinEyeCharacter==before,"ignore other units")
+events.UNIT_STATS("player"); flush()
+assert(ns.char.goblinEyeCharacter.stats.spell_hit_modifier_percent==nil,"secret character stats stay unknown")
 local function serialize(v)
  if type(v)=="table" then
   local out={}; for k,x in pairs(v) do out[#out+1]="["..serialize(k).."]="..serialize(x) end

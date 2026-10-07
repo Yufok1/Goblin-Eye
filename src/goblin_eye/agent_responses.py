@@ -147,6 +147,8 @@ def prepare_response(name, value, detail='compact'):
             for field in ('bags','bank','mail','layout','recipes','crafts','duraSlots'):
                 character.pop(field,None)
             character.pop('goblinEyeGear',None)
+            character.pop('goblinEyeCharacter',None)
+            character.pop('goblinEyeQuests',None)
             value.get('source_payload',{}).pop('recipeInfo',None)
             value['instance_evidence']={}
             for item in value['items']:

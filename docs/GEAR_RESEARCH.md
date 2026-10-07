@@ -45,30 +45,65 @@ Unseen combinations remain unknown. A suffix name never supplies a numeric
 bonus by itself. API stat rows do not guarantee complete proc/effect coverage.
 Tooltip-only effects retain their text, without invented stat conversions.
 
+## Character sheet and quest freshness
+
+The same Alts extension automatically records the current character's maximum
+health/mana, effective attributes, available school spell-damage/crit values,
+regen, separate hit modifiers, selected talent-node ranks/spell IDs and helpful
+buffs. It reads public addon APIs outside lockdown on normal login/equipment,
+trait/stat/aura events, with a debounce. Unsupported or secret fields remain
+absent. It does not sample current health/power, damage events, movement or
+combat logs. Race, realm and build are client observations; they do not set an
+auction region or ruleset.
+
+Completed quest IDs are queried automatically on entering the world and quest
+changes, then saved by Alts with a capture timestamp. The quest tool chooses
+between this exact-character observation and the existing Questie cache by
+freshness, exposing the timestamp basis. It never treats an absent quest as
+proof of eligibility. Neither the client nor these tools supplies a universal
+current quest-eligibility catalog.
+
+Goblin Eye's Python/MCP backend reads these saved addon files and its database.
+It does not access the game process, screenshot gameplay, issue game inputs,
+or call game APIs. The separately authorized WoWAI transport screenshots only
+the addon-generated chat strip and writes reply addon files. It carries chat;
+it is not a research data provider.
+
 ## Tools and evidence
 
 1. Use `list_characters`, then the intended `get_character_snapshot`.
 2. Read `research_preflight`: missing exact stats, tooltip coverage, enchants,
-   unrecorded slots and static catalog conflicts are explicit. Effective buffed
-   or talented character totals are still not exported by the inspected addon.
+   unrecorded slots and static catalog conflicts are explicit. If audit_readiness
+   is blocked, diagnose capture/source health before launching a full upgrade
+   hunt. Read character_stats for observed totals and unknown fields.
+   Its talent records page through talent_limit/talent_offset on this same tool.
 3. Follow `equipment_next_offset` with `get_character_equipment`; inventory is
    separately paged through `get_character_inventory`.
 4. Use `get_item_variants(item_id, item_link=full_link)` for observed numeric
    rows and tooltip text. Keep exact links, account namespace and build separate.
-   Conflicting observed builds are not silently selected for equipped totals.
+   The character's observed client build selects matching full-link values;
+   old builds remain available through get_item_variants(game_build=...).
+   Without a known build, conflicting observed builds remain unresolved.
 5. Use `get_enchant_evidence` for ProfessionDB's applied-enchant catalog and
    recipe assertions. Verify slot/build. Do not double-count enchants against
    full-link API stats without establishing the API's inclusion semantics.
-6. Use `get_character_quests` for Questie's existing personal completion cache.
+6. Use `get_character_quests` for client-observed completion and Questie fallback.
    Matching uses the exact account and full character name. File save time is
    not completion time. Absence does not prove quest eligibility or zero quests.
 7. Page `get_research_datasets`, `search_evidence`, acquisition and world tools
    using their returned `next_offset`. A partial page cannot establish absence.
+8. Read get_recipe_evidence(fact_id, snapshot_id=...) for learning_plan: dynamic
+   pattern acquisition associations, trainer claims, skill disagreements,
+   saved profession/known-recipe coverage and material follow-ups. Page pattern
+   acquisition rather than treating its first five sources as exhaustive.
 
 Static Forever Guide catalog, gear and tooltip views remain separate. Raw stat
 keys survive import; normalized fields cover the installed renderer's keys.
 Shadow resistance is not Shadow damage. Generic hit/crit ratings are not
 spell-only or percentages. Classic fallback views retain their labels.
+Stat conflicts are explicit. Only subtract the same normalized stat key at a
+comparable scope/build; spell_damage and spell_power equivalence has not been
+established by these sources. Missing keys cannot be substituted with zero.
 
 Dungeon searches accept sourced dungeon names, keys and slugs. Membership comes
 from Forever Guide's explicit boss and quest associations and can join other

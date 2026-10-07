@@ -21,6 +21,12 @@ STAT_KEYS = {
     'ITEM_MOD_BLOCK_VALUE_SHORT':'block_value', 'RESISTANCE0_NAME':'armor',
     'ITEM_MOD_DAMAGE_PER_SECOND_SHORT':'weapon_dps',
 }
+# Normalize the client school-damage field family, independently of item IDs.
+# Resistance fields and generic spell power/damage keep their separate scopes.
+STAT_KEYS.update({
+    'ITEM_MOD_'+school.upper()+'_DAMAGE_DONE_SHORT': school+'_damage'
+    for school in ('holy', 'fire', 'nature', 'frost', 'shadow', 'arcane')
+})
 
 def item_string(link):
     if not isinstance(link, str) or len(link) > 2048:
@@ -67,6 +73,13 @@ def validate_export(root):
             raise ValueError('Invalid item tooltip lines')
         if any(not isinstance(v,str) or len(v)>400 for v in lines.values()): raise ValueError('Invalid tooltip text')
         if sum(len(v.encode('utf-8')) for v in lines.values())>8000: raise ValueError('Item tooltip exceeds export budget')
+        metadata=record.get('metadata',{})
+        if not isinstance(metadata,dict) or set(metadata)-{'name','quality_id','item_level','required_level','equip_location'}:
+            raise ValueError('Invalid observed item metadata')
+        for field,value in metadata.items():
+            if field in ('name','equip_location'):
+                if not isinstance(value,str) or len(value)>200: raise ValueError('Invalid observed item text')
+            elif type(value) is not int or not 0<=value<=100000000: raise ValueError('Invalid observed item level/quality')
         build, locale = record.get('build'), record.get('locale')
         if not isinstance(build,str) or len(build)>100 or not isinstance(locale,str) or len(locale)>20:
             raise ValueError('Missing item build/locale')
@@ -88,7 +101,7 @@ def import_instances(connection, namespace, rows, now, reference):
 class ItemInstances:
     def __init__(self,database): self.database=database
 
-    def page(self,item_id,limit=10,offset=0,item_link=None,namespace=None):
+    def page(self,item_id,limit=10,offset=0,item_link=None,namespace=None,game_build=None):
         integer(item_id,'item_id',1); integer(limit,'limit',1,100); integer(offset,'offset')
         where,args=['item_id=?'],[item_id]
         if item_link is not None:
@@ -96,6 +109,9 @@ class ItemInstances:
             if int(key.split(':')[1]) != item_id: raise ValueError('item_link does not match item_id')
             where.append('item_string=?'); args.append(key)
         if namespace is not None: where.append('namespace=?'); args.append(namespace)
+        if game_build is not None:
+            if not isinstance(game_build,str) or not game_build or len(game_build)>100: raise ValueError('Invalid game_build')
+            where.append('game_build=?'); args.append(game_build)
         clause=' AND '.join(where)
         base=''' FROM (SELECT *,ROW_NUMBER() OVER(PARTITION BY namespace,item_string,game_build
             ORDER BY captured_at DESC,id DESC) latest FROM item_instance_facts WHERE '''+clause+''') WHERE latest=1'''
@@ -107,6 +123,7 @@ class ItemInstances:
             raw=json.loads(row['attributes_json'])
             records.append({'id':row['id'],'item_id':row['item_id'],'item_string':row['item_string'],
                 'item_link':raw['link'],'stats_raw':raw['stats'],'stats':normalize_stats(raw['stats']),
+                'metadata':raw.get('metadata',{}),
                 'tooltip':[raw['tooltip'][k] for k in sorted(raw.get('tooltip',{}),key=int)],'locale':raw['locale'],
                 'captured_at':row['captured_at'],'imported_at':row['imported_at'],'game_build':row['game_build'],
                 'source_key':'local-alts-forever','raw_reference':row['raw_reference'],

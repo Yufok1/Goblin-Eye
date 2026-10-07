@@ -4,6 +4,19 @@ local _, ns = ...
 if ns.disabled then return end
 local secret = issecretvalue or function() return false end
 local function Plain(v) if not secret(v) then return v end end
+local function Call(fn, ...)
+    if type(fn) ~= "function" then return end
+    local ok, a, b, c, d = pcall(fn, ...)
+    if ok then return Plain(a), Plain(b), Plain(c), Plain(d) end
+end
+local function Number(v)
+    v = Plain(v)
+    if type(v) == "number" and v == v and math.abs(v) <= 100000000 then return v end
+end
+local function Text(v)
+    v = Plain(v)
+    if type(v) == "string" and #v <= 200 then return v end
+end
 local pending, waiting, seen, tooltipAt, scheduled = {}, {}, {}, {}, false
 local requested, attempts, retryScheduled = {}, {}, false
 local MAX_ITEMS = 1000
@@ -56,6 +69,7 @@ local function Capture(link, data)
             end
             return false
         end
+        requested[id] = nil -- bound request bookkeeping to data still loading
     end
     local clock = GetTime and GetTime() or time()
     if data and tooltipAt[key] and clock - tooltipAt[key] < 2 then return true end
@@ -86,7 +100,10 @@ local function Capture(link, data)
             local at = row.capturedAt or 0
             if not oldestAt or at < oldestAt then oldestKey, oldestAt = k, at end
         end
-        if count >= MAX_ITEMS and oldestKey then export.items[oldestKey] = nil end
+        if count >= MAX_ITEMS and oldestKey then
+            export.items[oldestKey] = nil
+            seen[oldestKey], tooltipAt[oldestKey], attempts[oldestKey] = nil, nil, nil
+        end
     end
     local previous = export.items[key]
     -- Read ordinary item tooltip data directly. No visible tooltip, mouse hover,
@@ -98,8 +115,15 @@ local function Capture(link, data)
     end
     local tooltip = Lines(data)
     if #tooltip == 0 and previous and previous.build == build then tooltip = previous.tooltip or {} end
+    local metadata = {}
+    local infoAPI = C_Item and C_Item.GetItemInfo or GetItemInfo
+    if infoAPI then
+        local infoOK, name, _, quality, level, required, _, _, _, equip = pcall(infoAPI, link)
+        if infoOK then metadata = {name=Text(name),quality_id=Number(quality),item_level=Number(level),
+            required_level=Number(required),equip_location=Text(equip)} end
+    end
     export.items[key] = {link = link, itemId = tonumber(key:match("^item:(%d+):")),
-        capturedAt = time(), build = build, locale = locale, stats = stats, tooltip = tooltip}
+        capturedAt = time(), build = build, locale = locale, stats = stats, tooltip = tooltip, metadata=metadata}
     local complete = not automaticTooltip or #tooltip > 0
     seen[key] = complete or nil
     if data then tooltipAt[key] = clock end
@@ -219,3 +243,121 @@ ns.On("GET_ITEM_INFO_RECEIVED", function(itemID, success)
         if not itemID or tonumber(key:match("^item:(%d+):")) == itemID then Queue(link) end
     end
 end)
+
+-- Out-of-combat character-sheet snapshots, not combat/health/movement telemetry.
+local function Talents()
+    local T = C_Traits
+    local kind = Enum and Enum.TraitConfigType and Enum.TraitConfigType.CamelotCombat or 4
+    local configs = T and Call(T.GetConfigsByType, kind)
+    if type(configs) ~= "table" or not Number(configs[1]) then return {status="not_recorded", nodes={}} end
+    local config = configs[1]
+    local info = Call(T.GetConfigInfo, config)
+    local trees = type(info) == "table" and Plain(info.treeIDs)
+    if type(trees) ~= "table" or #trees == 0 then return {status="not_recorded", nodes={}} end
+    local out, complete = {}, true
+    for _, tree in ipairs(trees) do
+        local ids = Number(tree) and Call(T.GetTreeNodes, tree)
+        if type(ids) ~= "table" then complete = false else
+            for _, id in ipairs(ids) do
+                local node = Number(id) and Call(T.GetNodeInfo, config, id)
+                local rank = type(node) == "table" and Number(node.currentRank)
+                if not rank then complete = false elseif rank > 0 then
+                    if #out >= 128 then complete = false; break end
+                    local active = Plain(node.activeEntry)
+                    local entryID = type(active) == "table" and Number(active.entryID)
+                    local entries = Plain(node.entryIDs)
+                    if not entryID and type(entries) == "table" and #entries == 1 then entryID = Number(entries[1]) end
+                    local entry = entryID and Call(T.GetEntryInfo, config, entryID)
+                    local definitionID = type(entry) == "table" and Number(entry.definitionID)
+                    local definition = definitionID and Call(T.GetDefinitionInfo, definitionID)
+                    local spellID = type(definition) == "table" and Number(definition.spellID)
+                    local spell = spellID and C_Spell and Call(C_Spell.GetSpellInfo, spellID)
+                    out[#out+1] = {nodeID=id, treeID=tree, rank=rank, entryID=entryID,
+                        spellID=spellID, name=type(spell)=="table" and Text(spell.name) or nil}
+                end
+            end
+        end
+    end
+    return {status=complete and "recorded" or "partial", configID=config, nodes=out}
+end
+local function Character()
+    if not ns.char or (InCombatLockdown and InCombatLockdown()) then return end
+    local stats = {}
+    stats.max_health = Number(Call(UnitHealthMax, "player"))
+    stats.max_mana = Number(Call(UnitPowerMax, "player", 0))
+    for i, key in ipairs({"strength", "agility", "stamina", "intellect", "spirit"}) do
+        local _, effective = Call(UnitStat, "player", i)
+        stats[key] = Number(effective)
+    end
+    local _, armor = Call(UnitArmor, "player")
+    stats.armor = Number(armor)
+    for school, key in ipairs({"physical", "holy", "fire", "nature", "frost", "shadow", "arcane"}) do
+        if school > 1 then
+            stats[key.."_damage"] = Number(Call(GetSpellBonusDamage, school))
+            stats[key.."_crit_percent"] = Number(Call(GetSpellCritChance, school))
+        end
+    end
+    stats.healing_power = Number(Call(GetSpellBonusHealing))
+    stats.spell_hit_modifier_percent = Number(Call(GetSpellHitModifier))
+    stats.spell_hit_rating_bonus_percent = Number(CR_HIT_SPELL and Call(GetCombatRatingBonus, CR_HIT_SPELL))
+    stats.spell_penetration = Number(Call(GetSpellPenetration))
+    local idle, casting = Call(GetManaRegen)
+    stats.mana_regen_per_second = Number(idle)
+    stats.mana_regen_casting_per_second = Number(casting)
+    local buffs, auraStatus = {}, "not_recorded"
+    local A = C_UnitAuras
+    local restricted = C_Secrets and Call(C_Secrets.ShouldAurasBeSecret)
+    if A and A.GetAuraDataByIndex and restricted ~= true then
+        auraStatus = "recorded"
+        for index=1,41 do
+            local ok, aura = pcall(A.GetAuraDataByIndex, "player", index, "HELPFUL")
+            if not ok or secret(aura) then auraStatus="partial"; break end
+            if not aura then break end
+            if type(aura) ~= "table" then auraStatus="partial"; break end
+            if index > 40 then auraStatus="partial"; break end
+            local id = Number(aura.spellId)
+            if id then buffs[#buffs+1] = {spellID=id, name=Text(aura.name), applications=Number(aura.applications)}
+            else auraStatus="partial" end
+        end
+    end
+    local _, race = Call(UnitRace, "player")
+    local _, build = Call(GetBuildInfo)
+    ns.char.goblinEyeCharacter = {version=1, capturedAt=time(), build=Text(build),
+        locale=Text(Call(GetLocale)), race=Text(race), realm=Text(Call(GetRealmName)), stats=stats,
+        talents=Talents(), buffs={status=auraStatus, records=buffs}}
+end
+local function Quests()
+    if not ns.char or (InCombatLockdown and InCombatLockdown()) then return end
+    local ids = C_QuestLog and Call(C_QuestLog.GetAllCompletedQuestIDs)
+    if type(ids) ~= "table" then return end
+    local completed, count = {}, 0
+    for _, id in ipairs(ids) do
+        id = Number(id)
+        if not id or id <= 0 or id % 1 ~= 0 then return end
+        if not completed[id] then count=count+1; completed[id]=true end
+        if count > 100000 then return end
+    end
+    ns.char.goblinEyeQuests = {version=1, capturedAt=time(), completed=completed}
+end
+local sheetQueued, questsQueued = false, false
+local function SheetSoon(unit)
+    if unit and unit ~= "player" then return end
+    if sheetQueued or not C_Timer or not C_Timer.After then return end
+    sheetQueued = true
+    C_Timer.After(1, function() sheetQueued=false; Character() end)
+end
+local function QuestsSoon()
+    if questsQueued or not C_Timer or not C_Timer.After then return end
+    questsQueued = true
+    C_Timer.After(1, function() questsQueued=false; Quests() end)
+end
+ns.On("PLAYER_ENTERING_WORLD", function() SheetSoon(); QuestsSoon() end)
+ns.On("PLAYER_EQUIPMENT_CHANGED", function() SheetSoon() end)
+ns.On("PLAYER_LEVEL_UP", function() SheetSoon() end)
+ns.On("TRAIT_CONFIG_UPDATED", function() SheetSoon() end)
+ns.On("UNIT_STATS", SheetSoon)
+ns.On("UNIT_AURA", SheetSoon)
+ns.On("SPELL_POWER_CHANGED", function() SheetSoon() end)
+ns.On("QUEST_TURNED_IN", QuestsSoon)
+ns.On("QUEST_LOG_UPDATE", QuestsSoon)
+ns.On("PLAYER_REGEN_ENABLED", function() SheetSoon(); QuestsSoon() end)

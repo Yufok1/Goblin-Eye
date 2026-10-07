@@ -57,6 +57,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(item['instance_stats']['stats'],{'intellect':7})
         self.assertEqual(item['enchant_id'],254)
         self.assertEqual(snap['equipment_slots'][12]['status'],'recorded_empty')
+        self.assertIn('character_sheet_capture_missing',snap['research_preflight']['blocking_reasons'])
         self.assertEqual(snap['inventory_summary']['record_counts_by_location']['bag'],2000)
         self.assertEqual(self.server._call('get_character_inventory',{'snapshot_id':self.snapshot_id(),'limit':10})['next_offset'],10)
         variants=self.server._call('get_item_variants',{'item_id':6617,'item_link':self.link})
@@ -86,6 +87,86 @@ class CoverageTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT count(*) FROM character_snapshots').fetchone()[0],1)
             self.assertEqual(c.execute('SELECT count(*) FROM item_instance_facts').fetchone()[0],1)
 
+    def capture_sheet(self):
+        self.char['goblinEyeCharacter']={'version':1,'capturedAt':1791371090,'build':'70170','locale':'enUS',
+            'race':'Orc','realm':'Fixture Realm','stats':{'max_health':900,'max_mana':1200,'strength':25,
+                'agility':35,'stamina':45,'intellect':55,'spirit':65,'shadow_damage':43,'shadow_crit_percent':3.5},
+            'talents':{'status':'recorded','configID':100,'nodes':[{'treeID':200,'nodeID':i,'rank':1,'spellID':600+i} for i in range(1,31)]},
+            'buffs':{'status':'recorded','records':[{'spellID':700,'name':'Observed Buff','applications':1}]}}
+        self.char['goblinEyeQuests']={'version':1,'capturedAt':1791371090,'completed':{843:True,846:True,849:True}}
+
+    def test_character_sheet_talent_paging_and_client_quests(self):
+        self.capture_sheet(); self.import_save()
+        snap=self.server._call('get_character_snapshot',{'snapshot_id':self.snapshot_id(),'talent_limit':5,'talent_offset':10})
+        self.assertEqual(snap['race'],'Orc'); self.assertEqual(snap['game_build'],'70170')
+        self.assertEqual(snap['character_stats']['stats']['shadow_damage'],43)
+        talents=snap['character_stats']['talents']
+        self.assertEqual(talents['records'][0]['nodeID'],11); self.assertEqual(talents['next_offset'],15)
+        self.assertNotIn('goblinEyeCharacter',snap['character'])
+        self.assertEqual(snap['research_preflight']['audit_readiness'],'ready_for_source_qualified_comparison')
+        quests=self.server._call('get_character_quests',{'snapshot_id':self.snapshot_id(),'limit':2})
+        self.assertEqual([r['quest_id'] for r in quests['records']],[843,846])
+        self.assertEqual(quests['source_key'],'local-alts-forever'); self.assertEqual(quests['next_offset'],2)
+        self.char['goblinEyeCharacter']['stats']['shadow_damage']=True
+        with self.assertRaises(ValueError): self.import_save()
+        self.assertEqual(CharacterStore(self.db).get(self.snapshot_id())['character_stats']['stats']['shadow_damage'],43)
+
+    def test_observed_item_metadata_survives_import_and_compact_snapshot(self):
+        self.capture_sheet()
+        self.record['metadata']={'name':'Observed Full-link Item','quality_id':2,'required_level':24,'item_level':29,'equip_location':'INVTYPE_LEGS'}
+        self.import_save()
+        snap=self.server._call('get_character_snapshot',{'snapshot_id':self.snapshot_id()})
+        self.assertEqual(snap['items'][0]['observed_item_metadata']['required_level'],24)
+        self.record['metadata']['required_level']=True
+        with self.assertRaises(ValueError): self.import_save()
+
+    def test_build_matched_observation_resolves_old_conflicts_without_guessing(self):
+        self.capture_sheet(); self.import_save()
+        self.root['goblinEye']['items'][self.key]['build']='70205'
+        self.root['goblinEye']['items'][self.key]['stats']['ITEM_MOD_INTELLECT_SHORT']=99
+        self.import_save()
+        item=CharacterStore(self.db).get(self.snapshot_id())['items'][0]
+        self.assertEqual(item['instance_stats']['stats']['intellect'],7)
+        self.char['goblinEyeCharacter']['build']='70245'; self.import_save()
+        snap=CharacterStore(self.db).get(self.snapshot_id())
+        self.assertEqual(snap['items'][0]['instance_stats_status'],'different_observed_build')
+        self.assertEqual(snap['research_preflight']['audit_readiness'],'blocked')
+        self.assertEqual(snap['research_preflight']['blocking_slots'],['Legs'])
+
+    def test_empty_client_completion_is_distinct_from_missing_capture(self):
+        self.capture_sheet(); self.char['goblinEyeQuests']['completed']={}; self.import_save()
+        page=CharacterStore(self.db).quests(self.snapshot_id())
+        self.assertEqual(page['status'],'recorded'); self.assertEqual(page['total'],0)
+        self.char['goblinEyeQuests']['completed']={843:1}
+        with self.assertRaises(ValueError): self.import_save()
+
+    def test_dynamic_recipe_plan_pattern_sources_skill_conflict_and_crafter(self):
+        self.import_save()
+        with self.db.transaction() as c:
+            c.execute("INSERT INTO sources(source_key,name,source_type,trust_rank) VALUES ('fixture','Fixture','test',4)")
+            source=c.execute('SELECT id FROM sources WHERE source_key=\'fixture\'').fetchone()[0]
+            datasets=[]
+            for revision in ('a','b'):
+                datasets.append(c.execute("INSERT INTO research_datasets(source_id,dataset_key,sha256,retrieved_at,confidence,evidence_kind,manifest_json,limitations_json) VALUES (?,?,?,'2026-10-07',0.5,'extracted','{}','[]')",(source,revision,revision)).lastrowid)
+            fact=None
+            for dataset,skill in zip(datasets,(120,130)):
+                created=c.execute("INSERT INTO recipe_facts(dataset_id,spell_id,name,profession_id,profession,output_item_id,output_quantity,skill_required,attributes_json,raw_reference) VALUES (?,3100,'Fixture Craft',197,'Tailoring',3200,1,?,'{}','fixture')",(dataset,skill)).lastrowid
+                fact=fact or created
+                c.execute("INSERT INTO reagent_facts VALUES (?,3300,2)",(created,))
+                c.execute("INSERT INTO recipe_teaching_items VALUES (?,3400,'fixture')",(created,))
+            c.execute("INSERT INTO world_entity_facts(dataset_id,entity_type,entity_id,name,attributes_json,raw_reference) VALUES (?,'npc',3500,'Fixture Pattern Mob','{\"min_level\":23,\"max_level\":25}','fixture')",(datasets[0],))
+            c.execute("INSERT INTO acquisition_facts(dataset_id,item_id,method,entity_type,entity_id,probability,quest_condition,choice_reward,evidence_basis,raw_reference) VALUES (?,3400,'drop','npc',3500,NULL,0,0,'classic_baseline','fixture')",(datasets[0],))
+        recipe=self.server._call('get_recipe_evidence',{'fact_id':fact,'snapshot_id':self.snapshot_id()})
+        plan=recipe['learning_plan']
+        self.assertTrue(plan['skill_conflict']); self.assertEqual(plan['learning_method'],'pattern')
+        self.assertEqual(plan['pattern_sources'][0]['records'][0]['entity_name'],'Fixture Pattern Mob')
+        self.assertEqual(plan['pattern_sources'][0]['records'][0]['evidence_basis'],'classic_baseline')
+        self.assertEqual(plan['character']['crafter_status'],'needs_other_crafter_or_unrecorded_profession')
+        with self.db.transaction() as c:
+            c.execute('DELETE FROM recipe_teaching_items')
+        plan=self.server._call('get_recipe_evidence',{'fact_id':fact})['learning_plan']
+        self.assertEqual(plan['learning_method'],'unknown','absence of a pattern must not imply trainer access')
+
     def test_quest_completion_exact_namespace_and_persisted_freshness(self):
         self.import_save(); quests=self.path/'Questie.lua'
         def write(name):
@@ -109,6 +190,19 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(stats['hit_rating'],2); self.assertNotIn('spell_hit_rating',stats)
         self.assertEqual(raw['firres'],10)
         self.assertEqual(normalize_stats({'ITEM_MOD_POWER_REGEN0_SHORT':3,'ITEM_MOD_MANA_REGENERATION_SHORT':5}),{})
+
+    def test_client_school_damage_survives_without_merging_spell_power(self):
+        raw={'ITEM_MOD_'+school.upper()+'_DAMAGE_DONE_SHORT': i+10
+             for i,school in enumerate(('holy','fire','nature','frost','shadow','arcane'))}
+        raw.update({'ITEM_MOD_SPELL_POWER_SHORT':30,'ITEM_MOD_SPELL_DAMAGE_DONE_SHORT':20,
+                    'RESISTANCE0_NAME':44,'RESISTANCE5_NAME':7})
+        expected={school+'_damage':i+10
+                  for i,school in enumerate(('holy','fire','nature','frost','shadow','arcane'))}
+        expected.update({'spell_power':30,'spell_damage':20,'armor':44})
+        before=raw.copy()
+        self.assertEqual(normalize_stats(raw),expected)
+        self.assertEqual(raw,before,'raw client evidence must remain unchanged')
+        self.assertNotIn('shadow_resistance',normalize_stats(raw))
 
     def test_dungeon_filters_use_boss_membership_not_entrance_map(self):
         addon=self.path/'ForeverGuide'; addon.mkdir()
