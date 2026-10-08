@@ -20,7 +20,7 @@ LIMITATIONS = (
     "Forever dungeon loot comes from the package's foreverchanges.pro assertions; new-item rows do not provide drop probability or output quantity.",
     "Only bosses with a real NPC ID can form item-to-NPC edges; name-only Forever bosses remain retained in the cached source and coverage counts.",
     "Quest rewards are imported as Forever evidence only when the source reward table explicitly sets fv=true; eligibility and current phase availability remain unverified.",
-    "Classic Wowhead probabilities in the same loot file are not copied into these Forever override assertions.",
+    "Baseline loot rows are separate classic_baseline edges, not verified Forever drops; cached probabilities are not promoted to current drop rates.",
     "Name-only n: quest placeholders have no game quest ID; they remain in cached source documents and coverage counts, without fabricated quest links.",
 )
 
@@ -54,6 +54,11 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
             labels.append((dungeon['key'],dungeon['en'],dungeon.get('slug',dungeon['key']),
                 json.dumps({k:dungeon.get(k) for k in ('min','max','map','x','y','loce') if k in dungeon}),
                 'DungeonData.lua#DUNGEONS/'+dungeon['key']))
+            for quest_id in _sequence(dungeon.get('q', {}), 'dungeon quests'):
+                if isinstance(quest_id, str) and quest_id.startswith('n:'):
+                    continue
+                memberships.append((dungeon['key'], 'quest', positive_id(quest_id, 'dungeon quest ID'),
+                    'DungeonData.lua#DUNGEONS/'+dungeon['key']+'/q'))
     for dungeon_key, bosses in _assigned_table(loot_text, "LOOT").items():
         for boss in _sequence(bosses, f"LOOT[{dungeon_key}]"):
             if not isinstance(boss, dict) or not isinstance(boss.get("n"), str):
@@ -61,8 +66,7 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
             if boss.get('id') is not None:
                 memberships.append((dungeon_key,'npc',positive_id(boss['id'],'boss NPC ID'),
                     f'DungeonLoot.lua#ns.LOOT[{dungeon_key}]/{boss["id"]}'))
-            new_items = [item for item in _sequence(boss.get("items"), "boss items")
-                         if isinstance(item, dict) and item.get("new") is True]
+            new_items = _sequence(boss.get("items"), "boss items")
             if not new_items: continue
             boss_id = boss.get("id")
             if boss_id is None:
@@ -70,16 +74,24 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
             else:
                 positive_id(boss_id, "boss NPC ID")
                 entities[("npc", boss_id)] = (boss["n"], {"dungeon_key": dungeon_key, "level": boss.get("lv"),
-                    "rare": bool(boss.get("rare")), "forever_new_loot": True},
+                    "rare": bool(boss.get("rare")), "forever_new_loot": any(item.get('new') is True for item in new_items)},
                     f"DungeonLoot.lua#ns.LOOT[{dungeon_key}]/{boss_id}")
+            if boss_id is not None:
+                match = re.fullmatch(r'(\d+)(?:\s*[-\u2013]\s*(\d+))?', str(boss.get('lv', '')))
+                if match:
+                    lower, upper = int(match[1]), int(match[2] or match[1])
+                    if lower <= upper:
+                        entities[("npc", boss_id)][1].update(min_level=lower, max_level=upper)
             for item in new_items:
                 item_id = positive_id(item.get("id"), "Forever loot item ID")
                 if not isinstance(item.get("n"), str): raise ValueError("Forever loot item lacks a name")
                 item_names[item_id] = item["n"]
-                new_loot_rows += 1
+                is_new = item.get('new') is True
+                new_loot_rows += int(is_new)
                 if boss_id is not None:
-                    edges.append((item_id, "forever_drop", "npc", boss_id, None, 0, 0, "forever_community",
-                        f"DungeonLoot.lua#ns.LOOT[{dungeon_key}]/{boss_id}/{item_id};new=true;quantity=unknown"))
+                    edges.append((item_id, "forever_drop" if is_new else "drop", "npc", boss_id, None, 0, 0,
+                        "forever_community" if is_new else "classic_baseline",
+                        f"DungeonLoot.lua#ns.LOOT[{dungeon_key}]/{boss_id}/{item_id};new={str(is_new).lower()};quantity=unknown"))
 
     verified_quests = 0
     verified_reward_rows = 0
@@ -91,15 +103,13 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
             name_only_quests += 1
             continue
         positive_id(quest_id, "dungeon quest ID")
-        if isinstance(quest.get('z'),str):
-            memberships.append((quest['z'],'quest',quest_id,f'DungeonData.lua#ns.DQ[{quest_id}]'))
         rewards = quest.get("rw")
-        if not isinstance(rewards, dict) or rewards.get("fv") is not True:
+        attributes = {key: quest.get(key) for key in ("lv", "rl", "fa", "z", "new", "inside", "pre", "ps") if key in quest}
+        attributes["forever_reward_verified"] = isinstance(rewards, dict) and rewards.get('fv') is True
+        entities[("quest", quest_id)] = (quest["n"], attributes, f"DungeonData.lua#ns.DQ[{quest_id}]")
+        if not attributes['forever_reward_verified']:
             continue
         verified_quests += 1
-        attributes = {key: quest.get(key) for key in ("lv", "rl", "fa", "z", "new", "inside", "pre", "ps") if key in quest}
-        attributes["forever_reward_verified"] = True
-        entities[("quest", quest_id)] = (quest["n"], attributes, f"DungeonData.lua#ns.DQ[{quest_id}]")
         for field, choice in (("c", True), ("i", False)):
             rows = rewards.get(field)
             if rows is None: continue
@@ -113,9 +123,9 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
                     f"DungeonData.lua#ns.DQ[{quest_id}].rw.{field}/{item_id};quantity={quantity};fv=true"))
 
     for item_id, name in item_names.items():
-        entities[("item", item_id)] = (name, {"forever_new_dungeon_loot": True}, f"DungeonLoot.lua#item/{item_id}")
+        entities[("item", item_id)] = (name, {"loot_catalog_name_only": True}, f"DungeonLoot.lua#item/{item_id}")
     hashes = {name: hashlib.sha256(body).hexdigest() for name, body in files.items()}
-    fingerprint = hashlib.sha256(json.dumps({'files':hashes,'parser':2}, sort_keys=True).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps({'files':hashes,'parser':3}, sort_keys=True).encode()).hexdigest()
     entity_rows = tuple((kind, entity_id, name, json.dumps(attributes, ensure_ascii=False), raw)
                         for (kind, entity_id), (name, attributes, raw) in entities.items())
     return {"root": root, "files": files, "hashes": hashes, "fingerprint": fingerprint,

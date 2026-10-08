@@ -20,11 +20,19 @@ WORLD_JOIN = """ FROM world_entity_facts w JOIN research_datasets d ON d.id=w.da
 
 def quality_sql(item_column):
     # The caller supplies only a static SQL identifier, never user input.
-    return f"""(SELECT json_object('quality',io.quality,'source_key',qs.source_key,
+    return f"""coalesce((SELECT json_object('quality',io.quality,'source_key',qs.source_key,
         'retrieved_at',io.retrieved_at,'game_build',io.game_build,'confidence',io.confidence)
         FROM item_observations io JOIN sources qs ON qs.id=io.source_id
         WHERE io.item_id={item_column} AND io.quality IS NOT NULL
-        ORDER BY qs.trust_rank,io.retrieved_at DESC,io.confidence DESC,io.id DESC LIMIT 1)"""
+        ORDER BY qs.trust_rank,io.retrieved_at DESC,io.confidence DESC,io.id DESC LIMIT 1),
+        (SELECT json_object('quality',min(json_extract(p.attributes_json,'$.quality')),
+            'basis','agreeing_active_catalog_assertions',
+            'assertions',json_group_array(json_object('dataset_id',pd.id,'variant',p.variant,
+                'source_key',ps.source_key,'game_build',pd.game_build,'retrieved_at',pd.retrieved_at)))
+         FROM item_property_facts p JOIN research_datasets pd ON pd.id=p.dataset_id
+         JOIN sources ps ON ps.id=pd.source_id WHERE pd.active=1 AND p.item_id={item_column}
+            AND json_extract(p.attributes_json,'$.quality') IS NOT NULL
+         HAVING count(DISTINCT json_extract(p.attributes_json,'$.quality'))=1))"""
 
 
 def expand(row):
@@ -85,7 +93,14 @@ def world_filters(query='', entity_type=None, min_level=None, max_level=None, ui
                             ('ui_map_id', ui_map_id, '='), ('rank', rank, '=')):
         if value is not None:
             integer(value, name, 0 if name == 'rank' else 1)
-            where.append(f"json_extract(w.attributes_json,'$.{name}'){op}?"); args.append(value)
+            expression = f"json_extract(w.attributes_json,'$.{name}')"
+            if name in ('min_level', 'max_level'):
+                # Quest difficulty is not the minimum level required to accept it.
+                # Preserve missing/unknown values rather than casting text to zero.
+                fallback = "coalesce(json_extract(w.attributes_json,'$.level'),json_extract(w.attributes_json,'$.lv'))"
+                numeric = f"CASE WHEN typeof({fallback}) IN ('integer','real') THEN {fallback} WHEN typeof({fallback})='text' AND {fallback}<>'' AND {fallback} NOT GLOB '*[^0-9]*' THEN CAST({fallback} AS INTEGER) END"
+                expression = f"coalesce({expression},{numeric})"
+            where.append(f"{expression}{op}?"); args.append(value)
     if area_id is not None:
         integer(area_id, 'area_id', 1)
         where.append("(json_extract(w.attributes_json,'$.area_id')=? OR EXISTS(SELECT 1 FROM json_each(w.attributes_json,'$.spawn_area_ids') WHERE value=?))")
@@ -163,7 +178,7 @@ class ResearchQueries:
         return dict(item_id=item_id, records=records, total=total, limit=limit, offset=offset,
             truncated=offset + len(rows) < total, coverage=coverage, complete_loot_table=False,
             dungeon_filter_scope='Source-backed boss/quest membership; incomplete dungeon coverage. Entrance coordinates are not used to assign mobs to a dungeon.' if dungeon or (zone and not any(zone.strip().casefold() in v.casefold() for v in ZONE_NAMES.values())) else None,
-            quality_filter_scope='Quality filters use selected item_observations only. Items without a quality observation are excluded. Zero matches does not establish that no such loot exists; the acquisition index is also incomplete.',
+            quality_filter_scope='Quality uses selected item observations, falling back to agreeing active catalog assertions. Missing or conflicting catalog-only quality is excluded. Zero matches does not establish absence; inspect item research for source conflicts.',
             coverage_scope='Omitted counts are unfiltered source coverage for the requested item; cross-item coverage is not summarized.',
             interpretation='Filters apply before pagination. These are acquisition associations, not farm rankings. Unknown quality is not RARE. Check character requirements and inspect source rank before recommending combat. Historical probability, unknown quantity and asking price cannot establish measured gold/hour.')
 

@@ -391,49 +391,18 @@ test('outbound records replace field separators inside user text', () => {
   assert.ok(rec, 'the record keeps the full message as one wire field');
 });
 
-test('the game context describes the character and rides on the hello, then only when it changes or is turned off', () => {
-  const vm = newVM();
-  login(vm);
-  vm.run('STUB.RunTimers()');
-  const hello = stripRecords(vm)[0];
-  assert.deepEqual(hello.ctx.split('\n'), [
-    'Game: World of Warcraft: Forever (client 1.60.1.69913, interface 16001)',
-    'Character: Testchar on Test Realm, level 23 Night Elf Hunter (Alliance), guild <Test Guild>',
-    'Location: Duskwood - Darkshire',
-    'Position: 45.2, 67.8 (map 1431)',
-    'Money: 1g 23s 45c; XP: 1234/5000',
-    'Talents: Beast Mastery 10 / Marksmanship 5 / Survival 0',
-    'Professions: Skinning 75/75, First Aid 40/75',
-  ]);
-  // The bridge answers the hello: the context is now known to be on its side.
+test('chat strips clear old context and never collect research context, even after context on', () => {
+  const vm = newVM(); login(vm); vm.run('STUB.RunTimers()');
+  assert.equal(stripRecords(vm)[0].ctx, '');
   nextSlot(vm, '{ now = time(), cwd = "", replies = {} }');
-  vm.run('STUB.now = STUB.now + 6; STUB.Tick()');
-  assert.equal(vm.evaluate('WoWAI.IsConnected()'), 'true');
-  vm.run('WoWAI.Send("hello world")');
-  let rec = stripRecords(vm).find(r => r.text === 'hello world');
-  assert.equal(rec.flags, '', 'unchanged context is not repeated');
-  assert.equal(rec.ctx, undefined);
-  assert.equal(vm.evaluate('WoWAIDB.outbox.ctx'), null);
-  // Moving to another zone changes it, so the next message (from another chat,
-  // the first one is still waiting) carries the new version.
-  vm.run('STUB.zone = "Elwynn Forest"; STUB.subzone = ""; STUB.posX = 0.1; WoWAI.NewChat("Second"); WoWAI.Send("where am I")');
-  rec = stripRecords(vm).find(r => r.text === 'where am I');
-  assert.equal(rec.flags, 'c');
-  assert.ok(rec.ctx.includes('Location: Elwynn Forest\n'), rec.ctx);
-  assert.ok(rec.ctx.includes('Position: 10.0, 67.8 on Duskwood (map 1431)'), 'the map name shows when it differs from the zone');
-  assert.equal(Buffer.from(vm.evaluate('WoWAIDB.outbox.ctx'), 'hex').toString('utf8'), rec.ctx, 'the reload path carries it too');
-  // Turning it off sends an empty context at once (a hello), so the bridge drops what it had.
-  vm.run('SlashCmdList.WOWAI("context off")');
-  assert.equal(vm.evaluate('WoWAIDB.settings.context'), 'false');
-  const off = stripRecords(vm).filter(r => r.flags === 'h;c');
-  assert.equal(off.length, 1);
-  assert.equal(off[0].ctx, '');
-  assert.ok(vm.evaluate('WoWAIDB.chats[2].history[#WoWAIDB.chats[2].history].text').includes('Game context is OFF'));
-  // Back on: another hello, with the context again.
+  vm.run('STUB.now = STUB.now + 6; STUB.Tick(); WoWAI.Send("hello world")');
+  assert.equal(stripRecords(vm).find(r => r.text === 'hello world').ctx, undefined);
+  vm.run('STUB.zone = "Elwynn Forest"; STUB.posX = 0.1; WoWAI.NewChat("Second"); WoWAI.Send("where am I")');
+  assert.equal(stripRecords(vm).find(r => r.text === 'where am I').ctx, undefined);
   vm.run('SlashCmdList.WOWAI("context on")');
-  const on = stripRecords(vm).filter(r => r.flags === 'h;c');
-  assert.ok(on.some(r => r.ctx.includes('Character: Testchar')));
-  assert.ok(vm.evaluate('WoWAIDB.chats[2].history[#WoWAIDB.chats[2].history].text').includes('Game context is ON'));
+  assert.equal(vm.evaluate('WoWAIDB.settings.context'), 'false');
+  assert.ok(stripRecords(vm).filter(r => r.flags === 'h;c').every(r => r.ctx === ''));
+  assert.ok(vm.evaluate('WoWAIDB.chats[2].history[#WoWAIDB.chats[2].history].text').includes('saved addon files'));
 });
 
 test('a shift-clicked link lands in the focused input and is sent as its name plus tooltip', () => {

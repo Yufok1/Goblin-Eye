@@ -53,7 +53,7 @@ function AI.RefreshChatSettings()
  end
  f.restrict:SetEnabled(v and v.can_restrict or false)
  f.restrict:SetText(c.restrict and "Research mode: ON" or "Use configured permissions")
- f.context:SetText(s.context and "Character context: ON" or "Character context: OFF")
+ f.context:SetText("Research: saved addon files"); f.context:Disable()
  f.echo:SetText("Chat echo: " .. tostring(s.echo));f.font:SetText("Text size: " .. tostring(s.fontSize))
 end
 function AI.ShowChatSettings(id)
@@ -94,13 +94,13 @@ function AI.ShowChatSettings(id)
   f.reasonButtons={}
   for i=1,8 do f.reasonButtons[i]=Button(f,"",16+(i-1)*79,546,73,function(b)local chat=AI.ChatSettingsContext(f.chat);if chat then chat[b.key]=b.value~="" and b.value or nil;AI.RefreshChatSettings()end end)end
   f.restrict=Button(f,"",16,578,241,function()local chat=AI.ChatSettingsContext(f.chat);if chat then chat.restrict=not chat.restrict;AI.RefreshChatSettings()end end)
-  f.context=Button(f,"",264,578,220,function()local _,s=AI.ChatSettingsContext(f.chat);s.context=not s.context;AI.RefreshChatSettings()end)
+  f.context=Button(f,"",264,578,220,function()local _,s=AI.ChatSettingsContext(f.chat);s.context=false;AI.RefreshChatSettings()end)
   Button(f,"Voice settings",491,578,152,function()AI.ShowVoiceSettings()end)
   f.echo=Button(f,"",16,608,190,function()local _,s=AI.ChatSettingsContext(f.chat);local order={summary="full",full="off",off="summary"};s.echo=order[s.echo] or "summary";AI.RefreshChatSettings()end)
   Button(f,"A-",215,608,45,function()local _,s=AI.ChatSettingsContext(f.chat);s.fontSize=math.max(11,s.fontSize-1);AI.Render();AI.RefreshChatSettings()end)
   Button(f,"A+",266,608,45,function()local _,s=AI.ChatSettingsContext(f.chat);s.fontSize=math.min(22,s.fontSize+1);AI.Render();AI.RefreshChatSettings()end)
   f.font=Text(f,320,614,140)
-  Text(f,16,643,625):SetText("Model and reasoning choices apply to this chat's next message. Changing them starts a fresh agent session; visible history stays. Character context, echo, text size and voice settings apply across chats. Research mode only tightens configured permissions.")
+  Text(f,16,643,625):SetText("Model and reasoning choices apply to this chat's next message. Changing them starts a fresh agent session; visible history stays. Research uses saved addon files. Echo, text size and voice settings apply across chats. Research mode only tightens configured permissions.")
   window=f
  end
  window.chat=c.id;window.selected=nil;window.free=false;window.search:SetText("");window:Show();Request(1)

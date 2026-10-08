@@ -76,7 +76,7 @@ class CoverageTests(unittest.TestCase):
         self.assertEqual(ItemInstances(self.db).page(6617,item_link=self.link)['records'][0]['stats'],{'intellect':7})
         self.root['goblinEye']['items'][self.key]['build']='70205'
         self.import_save()
-        self.assertEqual(CharacterStore(self.db).get(self.snapshot_id())['items'][0]['instance_stats_status'],'conflicting_observed_builds')
+        self.assertEqual(CharacterStore(self.db).get(self.snapshot_id())['items'][0]['instance_stats_status'],'api_reported')
 
     def test_invalid_export_is_atomic(self):
         self.import_save()
@@ -174,11 +174,16 @@ class CoverageTests(unittest.TestCase):
         write('Exact'); QuestieSavedAdapter().import_file(self.db,quests)
         self.assertEqual(CharacterStore(self.db).quests(self.snapshot_id())['status'],'not_captured')
         write('Exact Name'); QuestieSavedAdapter().import_file(self.db,quests)
+        old_snapshot=self.snapshot_id()
+        self.assertEqual(CharacterStore(self.db).quests(old_snapshot)['status'],'not_captured')
+        self.char['level']=27; self.import_save()
         page=self.server._call('get_character_quests',{'snapshot_id':self.snapshot_id(),'limit':100})
         self.assertEqual(page['total'],168); self.assertEqual(page['next_offset'],100)
         self.assertEqual(self.server._call('get_character_quests',{'snapshot_id':self.snapshot_id(),'offset':100})['records'][0]['quest_id'],101)
         first=page['file_saved_at']; stamp=quests.stat().st_mtime+60; os.utime(quests,(stamp,stamp))
         QuestieSavedAdapter().import_file(self.db,quests)
+        self.assertEqual(CharacterStore(self.db).quests(self.snapshot_id())['file_saved_at'],first)
+        self.char['level']=28; self.import_save()
         self.assertNotEqual(CharacterStore(self.db).quests(self.snapshot_id())['file_saved_at'],first)
         quests.write_text('QuestieConfig={char={["Exact Name"]={complete={[1]=1}}}}')
         with self.assertRaises(ValueError): QuestieSavedAdapter().import_file(self.db,quests)
@@ -215,7 +220,7 @@ class CoverageTests(unittest.TestCase):
         with self.db.transaction() as c:
             ds=c.execute('SELECT id FROM research_datasets').fetchone()[0]
             c.executemany('INSERT INTO world_entity_facts(dataset_id,entity_type,entity_id,name,attributes_json,raw_reference) VALUES (?,\'npc\',?,?,?,?)',
-                [(ds,100,'Old boss','{}','boss'),(ds,101,'Entrance outsider','{"ui_map_id":1440}','outside')])
+                [(ds,101,'Entrance outsider','{"ui_map_id":1440}','outside')])
         page=self.server._call('search_world_entities',{'zone':'Blackfathom Deeps'})
         self.assertEqual([r['entity_id'] for r in page['records']],[100])
         self.assertIn('incomplete',page['dungeon_filter_scope'])

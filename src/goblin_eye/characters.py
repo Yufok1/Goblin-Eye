@@ -83,10 +83,10 @@ class CharacterStore:
                     if item['enchant_id']:
                         item['enchant_evidence']=ItemProperties(self.database).enchant(item['enchant_id'])
                     observed=ItemInstances(self.database).page(item['item_id'],item_link=item['item_link'],
-                        namespace=result['source_payload']['namespace'],limit=10)['records']
+                        namespace=result['source_payload']['namespace'],known_at=result['imported_at'],limit=10)['records']
                     # Never silently choose between observations from different builds.
                     selected=ItemInstances(self.database).page(item['item_id'],item_link=item['item_link'],
-                        namespace=result['source_payload']['namespace'],game_build=result['game_build'],limit=1)['records'] if result.get('game_build') else observed
+                        namespace=result['source_payload']['namespace'],game_build=result['game_build'],known_at=result['imported_at'],limit=1)['records'] if result.get('game_build') else observed
                     if len({v['game_build'] for v in selected})==1 and selected:
                         item['instance_stats']=selected[0]
                         item['observed_item_metadata']=selected[0].get('metadata',{})
@@ -171,6 +171,7 @@ class CharacterStore:
         result["market_key"] = result["auction_context"]["market_key"]
         result["market_context_source"] = "User-selected local auction workspace; not a field in the character source"
         result["follow_up"] = "Use item_id with item research and acquisition tools. Treat saved character data as observations from the named source, with its recorded freshness."
+        result['evidence_time_policy'] = 'Equipment observations and Questie fallback are limited to evidence imported by this snapshot. Their own capture times remain explicit. Static item catalogs are current research enrichment, not historical character observations.'
         return result
 
     def quests(self,snapshot_id,limit=20,offset=0):
@@ -181,8 +182,8 @@ class CharacterStore:
             if not snapshot: raise ValueError('Character snapshot not found')
             payload=json.loads(snapshot['payload_json'])
             namespace=payload.get('namespace')
-            row=c.execute('''SELECT * FROM character_quest_snapshots WHERE namespace=? AND character_name=?
-                ORDER BY file_saved_at DESC,id DESC LIMIT 1''',(namespace,snapshot['name'])).fetchone()
+            row=c.execute('''SELECT * FROM character_quest_snapshots WHERE namespace=? AND character_name=? AND imported_at<=?
+                ORDER BY file_saved_at DESC,id DESC LIMIT 1''',(namespace,snapshot['name'],snapshot['imported_at'])).fetchone()
         capture=payload.get('character',{}).get('goblinEyeQuests')
         if capture:
             observed=datetime.fromtimestamp(capture['capturedAt'],timezone.utc).isoformat()

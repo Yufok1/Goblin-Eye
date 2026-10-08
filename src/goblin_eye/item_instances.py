@@ -101,9 +101,12 @@ def import_instances(connection, namespace, rows, now, reference):
 class ItemInstances:
     def __init__(self,database): self.database=database
 
-    def page(self,item_id,limit=10,offset=0,item_link=None,namespace=None,game_build=None):
+    def page(self,item_id,limit=10,offset=0,item_link=None,namespace=None,game_build=None,known_at=None):
         integer(item_id,'item_id',1); integer(limit,'limit',1,100); integer(offset,'offset')
         where,args=['item_id=?'],[item_id]
+        if known_at is not None:
+            datetime.fromisoformat(known_at)
+            where.append('imported_at<=?'); args.append(known_at)
         if item_link is not None:
             key=item_string(item_link)
             if int(key.split(':')[1]) != item_id: raise ValueError('item_link does not match item_id')

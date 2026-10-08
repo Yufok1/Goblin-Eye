@@ -215,7 +215,7 @@ TOOLS.extend([
     _tool('get_enchant_evidence','Read applied enchant stat assertions and possible application recipes from the installed ProfessionDB; never double-count against client full-link stats.',{'enchant_id':_I},['enchant_id']),
     _tool('get_item_variants','Page observed numeric stats and tooltip text for full item links, including unequipped variants. Only encountered variants are known; no universal suffix catalog is inferred.',
         {'item_id':_I,'item_link':_S,'game_build':_S,'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}},['item_id']),
-    _tool('get_character_quests','Page Questie saved completed quest IDs matched to this exact account and full character name. File time is not completion time; absent IDs do not prove eligibility.',
+    _tool('get_character_quests','Page saved Alts completion or Questie fallback matched to this snapshot and exact account/name. Later imports do not rewrite old snapshots. Questie file time is not completion time; absent IDs do not prove eligibility.',
         {'snapshot_id':_I,'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}},['snapshot_id']),
     _tool('get_acquisition_evidence','Read one exact acquisition fact with full source provenance, raw fields and active/archive status.',{'fact_id':_I},['fact_id']),
     _tool('get_scan_provenance','Read the original retained local scan header: realm, region, faction, addon version, build, count and source document ID. unknown region remains unknown.',{'snapshot_id':_I},['snapshot_id']),

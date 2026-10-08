@@ -240,7 +240,7 @@ function systemPrompt(ctx, primer) {
       '',
       ...MACRO_HINT);
   }
-  const ref = text ? String(primer || '').trim() : '';
+  const ref = String(primer || '').trim(); // Saved-file research instructions do not require live context.
   if (ref) {
     lines.push('', 'Reference for writing addons and macros for this client. Follow it when the task is about WoW, and check anything it marks as uncertain against the Blizzard UI source it names:', '', ref);
   }

@@ -206,7 +206,7 @@ local function InitDB()
 	local s = db.settings
 	s.autoRefresh = false -- Research companion: reload only from its explicit controls.
 	if s.signal == nil then s.signal = true end
-	if s.context == nil then s.context = true end -- tell the agent about the character, zone, etc.
+	s.context = false -- research context is retrieved through files-only MCP tools
 	-- How much of each reply to print in the game chat. "summary" (the agent's
 	-- closing TL;DR lines) replaced "full" as the default; an install that still
 	-- has the old default saved moves over once, any other choice is kept.
@@ -1041,120 +1041,9 @@ function WoWAI.SkillLines()
 end
 
 function WoWAI.GameContext()
-	local lines = {}
-	local version, build, _, toc = Try(GetBuildInfo)
-	toc = tonumber(toc)
-	local game = "World of Warcraft"
-	if toc and toc >= 16000 and toc < 20000 then game = "World of Warcraft: Forever" end
-	local client = ""
-	if version then
-		client = " (client " .. tostring(version) .. (build and ("." .. tostring(build)) or "") .. (toc and (", interface " .. toc) or "") .. ")"
-	end
-	table.insert(lines, "Game: " .. game .. client)
-
-	local name = Try(UnitName, "player")
-	if name then
-		local realm = Try(GetRealmName)
-		local level = Try(UnitLevel, "player")
-		local race = Try(UnitRace, "player")
-		local class = Try(UnitClass, "player")
-		local faction = Try(UnitFactionGroup, "player")
-		local guild = Try(GetGuildInfo, "player")
-		local who = "Character: " .. tostring(name) .. (realm and (" on " .. tostring(realm)) or "")
-		local desc = {}
-		if level then table.insert(desc, "level " .. tostring(level)) end
-		if race then table.insert(desc, tostring(race)) end
-		if class then table.insert(desc, tostring(class)) end
-		if #desc > 0 then who = who .. ", " .. table.concat(desc, " ") end
-		if faction then who = who .. " (" .. tostring(faction) .. ")" end
-		if guild then who = who .. ", guild <" .. tostring(guild) .. ">" end
-		table.insert(lines, who)
-	end
-
-	local zone = Try(GetZoneText)
-	local sub = Try(GetSubZoneText)
-	if zone and zone ~= "" then
-		table.insert(lines, "Location: " .. zone .. ((sub and sub ~= "" and sub ~= zone) and (" - " .. sub) or ""))
-	end
-
-	-- Map coordinates, as the minimap shows them (0-100 across the current map;
-	-- addons get no world x/y/z). Modern C_Map first, the vanilla call as fallback.
-	local x, y, mapName
-	local mapId = Try(C_Map and C_Map.GetBestMapForUnit, "player")
-	if type(mapId) == "number" then
-		local pos = Try(C_Map.GetPlayerMapPosition, mapId, "player")
-		if type(pos) == "table" and type(pos.x) == "number" and type(pos.y) == "number" then x, y = pos.x, pos.y end
-		local info = Try(C_Map.GetMapInfo, mapId)
-		if type(info) == "table" and type(info.name) == "string" then mapName = info.name end
-	end
-	if not x then
-		local px, py = Try(GetPlayerMapPosition, "player")
-		if type(px) == "number" and type(py) == "number" then x, y = px, py end
-	end
-	if x and y and (x > 0 or y > 0) then
-		local where = (mapName and mapName ~= zone) and (" on " .. mapName) or ""
-		table.insert(lines, string.format("Position: %.1f, %.1f%s%s", x * 100, y * 100, where, mapId and (" (map " .. mapId .. ")") or ""))
-	end
-
-	local progress = {}
-	local copper = Try(GetMoney)
-	if copper then table.insert(progress, "Money: " .. Money(copper)) end
-	local xp, xpMax = Try(UnitXP, "player"), Try(UnitXPMax, "player")
-	if type(xp) == "number" and type(xpMax) == "number" and xpMax > 0 then
-		table.insert(progress, "XP: " .. xp .. "/" .. xpMax)
-	end
-	if #progress > 0 then table.insert(lines, table.concat(progress, "; ")) end
-
-	-- Classic-style talent tabs: name, icon, points spent.
-	local tabs = Try(GetNumTalentTabs)
-	if type(tabs) == "number" and tabs > 0 then
-		local parts = {}
-		for i = 1, tabs do
-			local tname, _, points = Try(GetTalentTabInfo, i)
-			if type(tname) == "string" and type(points) == "number" then
-				table.insert(parts, tname .. " " .. points)
-			end
-		end
-		if #parts > 0 then table.insert(lines, "Talents: " .. table.concat(parts, " / ")) end
-	end
-
-	-- Skill lines under the Professions and Secondary Skills headers.
-	local header, parts = nil, {}
-	local wanted = { [TRADE_SKILLS or "Professions"] = true, [SECONDARY_SKILLS or "Secondary Skills"] = true }
-	for _, sk in ipairs(WoWAI.SkillLines()) do
-		if sk.isHeader then
-			header = sk.name
-		elseif (header and wanted[header]) or PROFESSION_SKILL_IDS[sk.skillID] then
-			table.insert(parts, sk.name .. (sk.rank and (" " .. tostring(sk.rank) .. (sk.maxRank and ("/" .. tostring(sk.maxRank)) or "")) or ""))
-		end
-	end
-	if #parts > 0 then table.insert(lines, "Professions: " .. table.concat(parts, ", ")) end
-
-	-- Quest log ids (what is accepted, and which are done), so route planning can
-	-- skip pickups and turn-ins that no longer apply.
-	local quests = {}
-	local qn = Try(C_QuestLog and C_QuestLog.GetNumQuestLogEntries) or Try(GetNumQuestLogEntries)
-	if type(qn) == "number" then
-		for i = 1, math.min(qn, 40) do
-			local id, header, complete
-			local info = Try(C_QuestLog and C_QuestLog.GetInfo, i)
-			if type(info) == "table" then
-				id, header = info.questID, info.isHeader
-				complete = Try(C_QuestLog.IsComplete, id)
-			else
-				local _, _, _, isHeader, _, isComplete, _, qid = Try(GetQuestLogTitle, i)
-				id, header, complete = qid, isHeader, isComplete == 1 or isComplete == true
-			end
-			if not header and type(id) == "number" and id > 0 then
-				table.insert(quests, tostring(id) .. (complete and "*" or ""))
-			end
-		end
-	end
-	if #quests > 0 then table.insert(lines, "Quest log (id, * = ready to turn in): " .. table.concat(quests, ",")) end
-
-	local s = table.concat(lines, "\n"):gsub("[\30\31]", " ")
-	if #s > CONTEXT_MAX then s = s:sub(1, CONTEXT_MAX) end
-	return s
+	-- Conversation transport only. Research reads saved addon files through MCP.
+	-- Keep the empty value so hello clears context cached by older bridges.
+	return ""
 end
 
 -- The context to put on the next record, or nil when the bridge already has
@@ -3199,19 +3088,11 @@ SlashCmdList["WOWAI"] = function(msg)
 		WoWAI.Render()
 		WoWAI.Toggle(true)
 	elseif cmd == "context" or cmd == "ctx" then
-		rest = rest:lower()
-		if rest == "on" or rest == "off" then
-			s.context = rest == "on"
-			-- Make sure the next record carries the change, hello throttle or not.
-			run.contextSent = nil
-			run.lastHelloAt = nil
-			if WoWAI.IsConnected() then WoWAI.SayHello() end
-		end
-		local ctx = WoWAI.GameContext()
-		AddHistory(c, "system", (s.context
-			and "Game context is ON: the agent is told this with each message (it goes into its system prompt, so unrelated projects are unaffected by anything but a few lines). /wow-ai context off to stop.\n\n"
-			or "Game context is OFF: the agent is told nothing about the game. /wow-ai context on to send this:\n\n") .. ctx
-			.. "\n\nTip: click the input box, then shift-click an item, spell or quest to link it into your message; the agent gets its tooltip.")
+		s.context = false
+		run.contextSent = nil
+		run.lastHelloAt = nil
+		if WoWAI.IsConnected() then WoWAI.SayHello() end
+		AddHistory(c, "system", "Research context comes from saved addon files through Goblin Eye MCP. WoWAI carries your conversation; automatic game context is disabled.")
 		WoWAI.Render()
 		WoWAI.Toggle(true)
 	elseif cmd == "mode" then
@@ -3804,7 +3685,7 @@ do
    end
    f.restrict:SetEnabled(v and v.can_restrict or false)
    f.restrict:SetText(c.restrict and "Research mode: ON" or "Use configured permissions")
-   f.context:SetText(s.context and "Character context: ON" or "Character context: OFF")
+   f.context:SetText("Research: saved addon files"); f.context:Disable()
    f.echo:SetText("Chat echo: " .. tostring(s.echo));f.font:SetText("Text size: " .. tostring(s.fontSize))
   end
   function AI.ShowChatSettings(id)
@@ -3845,13 +3726,13 @@ do
     f.reasonButtons={}
     for i=1,8 do f.reasonButtons[i]=Button(f,"",16+(i-1)*79,546,73,function(b)local chat=AI.ChatSettingsContext(f.chat);if chat then chat[b.key]=b.value~="" and b.value or nil;AI.RefreshChatSettings()end end)end
     f.restrict=Button(f,"",16,578,241,function()local chat=AI.ChatSettingsContext(f.chat);if chat then chat.restrict=not chat.restrict;AI.RefreshChatSettings()end end)
-    f.context=Button(f,"",264,578,220,function()local _,s=AI.ChatSettingsContext(f.chat);s.context=not s.context;AI.RefreshChatSettings()end)
+    f.context=Button(f,"",264,578,220,function()local _,s=AI.ChatSettingsContext(f.chat);s.context=false;AI.RefreshChatSettings()end)
     Button(f,"Voice settings",491,578,152,function()AI.ShowVoiceSettings()end)
     f.echo=Button(f,"",16,608,190,function()local _,s=AI.ChatSettingsContext(f.chat);local order={summary="full",full="off",off="summary"};s.echo=order[s.echo] or "summary";AI.RefreshChatSettings()end)
     Button(f,"A-",215,608,45,function()local _,s=AI.ChatSettingsContext(f.chat);s.fontSize=math.max(11,s.fontSize-1);AI.Render();AI.RefreshChatSettings()end)
     Button(f,"A+",266,608,45,function()local _,s=AI.ChatSettingsContext(f.chat);s.fontSize=math.min(22,s.fontSize+1);AI.Render();AI.RefreshChatSettings()end)
     f.font=Text(f,320,614,140)
-    Text(f,16,643,625):SetText("Model and reasoning choices apply to this chat's next message. Changing them starts a fresh agent session; visible history stays. Character context, echo, text size and voice settings apply across chats. Research mode only tightens configured permissions.")
+    Text(f,16,643,625):SetText("Model and reasoning choices apply to this chat's next message. Changing them starts a fresh agent session; visible history stays. Research uses saved addon files. Echo, text size and voice settings apply across chats. Research mode only tightens configured permissions.")
     window=f
    end
    window.chat=c.id;window.selected=nil;window.free=false;window.search:SetText("");window:Show();Request(1)

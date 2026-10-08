@@ -28,6 +28,8 @@ class ItemGraph:
             SELECT item_id FROM item_observations UNION SELECT id FROM items
             UNION SELECT item_id FROM auction_rows
             UNION SELECT item_id FROM character_item_observations
+            UNION SELECT a.item_id FROM acquisition_facts a JOIN research_datasets d ON d.id=a.dataset_id WHERE d.active=1
+            UNION SELECT item_id FROM item_instance_facts
             UNION SELECT p.item_id FROM item_property_facts p JOIN research_datasets d ON d.id=p.dataset_id WHERE d.active=1
             UNION SELECT w.entity_id FROM world_entity_facts w JOIN research_datasets d ON d.id=w.dataset_id
                 WHERE d.active=1 AND w.entity_type='item'
@@ -205,7 +207,7 @@ class ItemGraph:
         items = [dict(row) for row in rows]
         with self.database.transaction() as connection:
             for item in items:
-                raw = connection.execute('SELECT ' + quality_sql('?'), (item['item_id'],)).fetchone()[0]
+                raw = connection.execute('SELECT ' + quality_sql('?1'), (item['item_id'],)).fetchone()[0]
                 item['quality_evidence'] = json.loads(raw) if raw else None
         assertions = []
         for row in facts:
