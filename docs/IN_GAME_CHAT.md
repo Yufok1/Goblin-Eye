@@ -20,8 +20,9 @@ available, including free models. Availability and provider limits can change.
    accept its project/MCP trust prompt. Setup creates local connections for
    **Codex, Claude Code and Kilo**. Other adapters need their client's MCP setup
    configured separately; use the generated `.mcp.json` as a connection reference.
-5. Fully quit and restart WoW. Enable **WoW AI** and its **WoW AI slot** addons
-   at character selection. New slot/signal files require a full game restart.
+5. Fully quit and restart WoW. Open the game menu and its **AddOns** list.
+   Enable **WoW AI** and its **WoW AI slot** addons. New slot/signal files require
+   a full game restart.
 6. Double-click **Start-Goblin-Eye-Chat.cmd**, leave its console open and type
    `/wow-ai` in game. Use windowed or borderless mode for the pixel transport.
    Keep the dashboard running to import new saved observations.
@@ -29,7 +30,7 @@ available, including free models. Availability and provider limits can change.
 For a custom client location or unattended setup, run in the extracted folder:
 
 ```powershell
-.\Setup-WoWAI.cmd --wow "D:\Games\World of Warcraft\_classic_beta_" --account "YOUR_ACCOUNT" --agent kilo --yes
+.\Setup-WoWAI.cmd --wow "D:\Games\World of Warcraft\_forever_" --account "YOUR_ACCOUNT" --agent kilo --yes
 ```
 
 Setup copies only WoWAI, generates its reply slots, and writes **local** paths.
@@ -38,6 +39,9 @@ It does not install the CurseForge data addons or modify global client accounts.
 Your realm, faction, region and ruleset remain the dashboard's market settings.
 
 ## Chat controls
+
+Type `/wow-ai` or `/wowai` to open chat. `/wowai mini` shows the draggable
+eye; click it to reopen the window. A new live installation may start hidden.
 
 **Stop**, directly below Send, cancels the selected chat's running or queued AI
 request and preserves your draft. Other chats keep running. `/wow-ai stop` and
@@ -51,18 +55,33 @@ after a restart. Send a new message yourself to continue. Starting the bridge or
 logging in does not resume that instruction. Explicit developer `--once`/`--inject`
 commands remain available for deliberate test requests.
 
-Use **Chat settings** to select an agent and request its current model catalog.
-Catalogs are discovered from supported installed CLIs and cached for five minutes;
-refresh to request a new list. Unsupported/unavailable discovery does not invent
-models: use the manual model ID field or the agent's default. Model, variant,
+Use **Chat settings** to select an agent, model and reasoning level. The bridge
+discovers catalogs in the background at startup and every five minutes. Failed
+discovery retries after 30 seconds; Kilo has a 60-second discovery timeout. The
+open menu checks for recovered lists for up to two minutes. The addon saves
+complete catalogs; searching, paging, filtering and selecting models happen
+locally without pixel-strip requests. **Check updates** reads the bridge's latest
+published catalog; it does not launch discovery. In reload transport mode, a manual
+reload receives updates. The displayed timestamp identifies cached data, and a
+failed refresh keeps the last usable list. Unsupported/unavailable discovery does
+not invent models: use the agent's configured default. Model, variant,
 effort and permission choices apply per chat; changing them starts a new agent
-session while preserving the displayed transcript. Price/free labels come from
+session while preserving the displayed transcript. Selections automatically travel
+with the next chat message; there is no agent prompt to configure them. Voice
+controls still use the existing bridge transport. Price/free labels come from
 the catalog and are not a billing guarantee.
 
 Full replies can scroll/page. Research cards expand supported tool arguments,
 results and item/evidence details. Resource URLs are copyable; the addon does not
 launch arbitrary URLs or execute tool output. Large tool results have bounded
 previews, with full records retained in private local research archives.
+
+**Prompts** opens a separate, draggable research library beside the chat. Search
+the 28 bundled prompts, browse their summaries, and select one to read its full
+contents in the scrolling preview. **Add to chat draft** appends it to your
+current draft; every prompt is ready to send unchanged, using conversation and saved context. Browsing
+uses no bridge requests or model calls. The library is generated from
+`docs/prompt-power-pack` when the addon is built.
 
 **Voice settings** provides Windows Desktop speech: Play TL;DR, Play full, Stop,
 Test voice, volume, speed and optional automatic reading. Speech is off by default.
@@ -96,6 +115,11 @@ data are private. Do not post them in bug reports or include them in shared ZIPs
 - **MCP missing:** run setup, then start the CLI in the chat folder and approve
   project trust. Existing global servers belong to you; review conflicting
   duplicate `goblin_eye`/`goblin-eye` definitions in your client.
+- **AGY acknowledges but cannot research:** Antigravity print mode denies tool
+  calls that still require approval. Configure scoped `mcp(goblin-eye/TOOL_NAME)`
+  allow rules for the read-only tools you authorize in Antigravity's permission
+  settings, then send the request again. WoWAI reports these soft denials as an
+  incomplete request even if AGY labels its acknowledgement `SUCCESS`.
 - **No current models:** refresh the model catalog or enter a known model ID.
 - **Another bridge owns the files:** stop the earlier chat bridge; run one only.
 - **Moved installation:** stop the bridge and rerun setup from the new folder
@@ -107,3 +131,7 @@ data are private. Do not post them in bug reports or include them in shared ZIPs
 - **Grayed playback buttons:** wait for current playback or use Stop, then refresh
   voice status. Older replies need to remain in the local transcript.
 - **Audio error:** test an installed Windows voice and check your output device.
+
+Neural speech uses explicit UTF-8 pipe streams, including Windows installations
+with a legacy system code page. Private voice assets and runtime paths may live
+outside this folder; see [private voice portability](../wow-ai/LOCAL-VOICES.md).

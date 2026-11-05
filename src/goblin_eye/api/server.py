@@ -276,6 +276,24 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 
 def serve(database: Database, settings: Settings) -> None:
+    if settings.auto_import_alts_forever:
+        from goblin_eye.ingestion.item_export_setup import ensure_item_exports
+        try:
+            exports=ensure_item_exports(PROJECT_ROOT,settings.alts_forever_paths)
+            if exports:
+                from datetime import datetime, timezone
+                with database.write_transaction() as c:
+                    c.execute('''INSERT INTO sources(source_key,name,source_type,trust_rank,last_success_at,notes)
+                        VALUES ('local-alts-forever-export','Alts numeric export setup','local_configuration',1,?,?)
+                        ON CONFLICT(source_key) DO UPDATE SET last_error=NULL,last_success_at=excluded.last_success_at,notes=excluded.notes''',
+                        (datetime.now(timezone.utc).isoformat(),'Owned export installed in '+str(len(exports))+' inspected Alts installations. Restart WoW after first setup; save with /reload. Installation success is not proof of captured item stats.'))
+        except (OSError,ValueError) as error:
+            import logging
+            logging.warning('Alts Forever numeric export setup failed: %s',error)
+            with database.write_transaction() as c:
+                c.execute('''INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
+                    VALUES ('local-alts-forever-export','Alts numeric export setup','local_configuration',1,?)
+                    ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error''',(str(error),))
     RequestHandler.database = database
     RequestHandler.settings = settings
     RequestHandler.static_roots = (PROJECT_ROOT / "web" / "dist", PROJECT_ROOT / "web" / "public")
@@ -289,6 +307,11 @@ def serve(database: Database, settings: Settings) -> None:
     local_ahledger_watcher = None
     alts_watcher = None
     static_watchers = []
+    if settings.auto_import_questie_saved:
+        from goblin_eye.ingestion.questie_saved import QuestieSavedWatcher
+        questie_saved_watcher = QuestieSavedWatcher(database,settings.questie_saved_paths,settings.watch_interval_seconds)
+        questie_saved_watcher.start()
+        static_watchers.append(questie_saved_watcher)
     for enabled, watcher_type, paths in (
         (settings.auto_import_questiedb, QuestieDbWatcher, settings.questiedb_paths),
         (settings.auto_import_mapzeroth, MapzerothWatcher, settings.mapzeroth_paths),

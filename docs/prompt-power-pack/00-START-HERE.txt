@@ -1,0 +1,26 @@
+GOBLIN EYE PROMPT POWER PACK
+
+28 copy-and-paste research prompts, plus follow-up controls.
+
+QUICK START
+The master document is a library: copy one prompt at a time, not the entire document.
+Open one numbered .txt file and paste its whole contents into a Goblin Eye-connected agent. Every prompt is ready to send unchanged. It selects its research subject from conversation and saved context, or gives a supported overview if essential context is missing. You can use the same prompts with any of your connected providers; a plain unconnected chat cannot inspect your Goblin Eye database.
+
+These are research requests, not claims about your current character or market. They do not run automatically, create scheduled jobs, or save companion notes/goals. They work best with reasonably fresh saved addon data. No outro or session wrap-up is required.
+
+START WITH THESE
+01: What should I do next?
+03: Find connections I am missing
+17: What am I overlooking in my bags and bank?
+21: Show me an overlooked possibility
+22: Opportunity lab
+26: Can Goblin Eye answer this well yet?
+
+EXAMPLE CHAINS
+Gear: 26 -> 05 -> 06 -> 07 -> 09
+Profession project: 16 -> 15 -> 17 -> 12
+Exploration: 19 -> 21 -> 20
+Economic hypothesis: 22 -> 13 -> manually measure a trial -> 14
+Second opinion: paste an answer into 24 using another connected provider.
+
+Run one prompt at a time. Choose follow-ups based on the result; these chains are suggestions, not an automatic batch. A blocker or missing prerequisite is a useful result.

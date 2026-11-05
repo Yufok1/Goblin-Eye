@@ -209,7 +209,7 @@ class ForeverGuideProfessionAdapter:
         now = datetime.now(timezone.utc).isoformat()
         manifest = {name: {"sha256": hashlib.sha256(body).hexdigest(), "path": str(dataset.root / name), "bytes": len(body)}
                     for name, body in dataset.files.items()}
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?, 'Forever Guide profession verification', 'bundled_profession_database', ?, 4, ?, ?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",

@@ -29,8 +29,9 @@ Alts Forever observations update when WoW saves after /reload or logout.
 Equipment slots are explicit; bags have quantities. Bank/mail/recipes need
 their corresponding windows opened. Missing data is unknown and an empty
 mail object alone does not prove coverage. Exported full names must not be
-split into character and realm. Realm, race and build are not exported by this
-inspected format. Refresh source health after a new save.
+split into character and realm. The optional Alts extension records client
+realm/race/build and timestamped character-sheet/quest observations; the base
+save omits those fields. Refresh source health after a new save.
 
 The dashboard automatically imports installed Auctionator, AHledger, Alts
 Forever, ProfessionDB, Forever Guide, QuestieDB, and Mapzeroth when enabled and
@@ -39,6 +40,11 @@ every 60 seconds. Blizzard reference pages and public AHledger refresh on the
 configured external interval (30 minutes by default). The optional modified WoWAI chat addon is bundled; these data addons
 are installed separately by the player. Keep the dashboard running for automatic ingestion; MCP queries
 read its database and do not start background import workers.
+
+Background importers queue database writes per local database file within the
+dashboard process. Large imports can make another import wait; dashboard and MCP
+reads continue to use committed evidence while it runs. Source-error logging uses
+the same writer queue. Downloads and source parsing happen outside write scopes.
 
 Discovery checks common Forever client locations independently of other addons.
 For a different install location, set the corresponding addon directory in
@@ -64,3 +70,13 @@ an empty view. Back up your own data before upgrades.
 
 Connect an MCP client using AGENT_SETUP.md in this docs folder. The optional WoWAI chat interface uses a separately configured agent CLI;
 there is no embedded AI model or game automation. See IN_GAME_CHAT.md. Every in-game action and decision remains yours.
+
+## Equipment and item properties
+
+Use the existing `get_character_snapshot` and `get_item_research` tools. Forever Guide ItemCatalogData.lua, GearData.lua and ItemStatsData.lua import through its existing watcher independently of WoWAI. Character results include explicit slot names, observed item names/links/quality, per-item property variants and shared provenance. Item research keeps properties in compact and full replies. Slots absent from the save remain not_recorded; an explicitly nil slot is recorded_empty. Ranged is separate from Off Hand.
+
+The catalogs can disagree on quality, levels or stats; their assertions stay separate with build and Classic fallback labels. Spell power, spell damage and school damage stay distinct unless equivalence is verified. Duplicate stat keys remain arrays in stats_raw and are omitted from normalized stats rather than summed. Base stats do not resolve bonus IDs, random suffixes or enchants from modern links. The optional Alts extension supplies timestamped client item and character-sheet observations; unsupported or uncaptured fields remain unknown. Do not call an item an upgrade, BiS or a Shadow Wrath item by its name/color alone.
+
+For exact full-link observations, permanent enchants, Questie completion and report preflight, follow [Reliable gear research](GEAR_RESEARCH.md). These imports use the existing data addons and are independent of WoWAI.
+
+Research coverage: narrow broad searches before paging. Follow next_offset for each chosen scope; report unsearched pages and missing metadata explicitly. Never claim no candidates from a partial page. Return fewer verified targets rather than filling a requested count with unsupported upgrades. Quest level filters use quest difficulty, not acceptance level; verify required level and prerequisites separately. Baseline dungeon drops remain classic_baseline, not verified Forever loot. Historical character observations are limited to evidence known at snapshot import; static catalogs remain current enrichment.

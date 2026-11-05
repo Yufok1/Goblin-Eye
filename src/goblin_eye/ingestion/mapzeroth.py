@@ -180,7 +180,7 @@ class MapzerothAdapter:
     def import_file(self, database: Database, path: Path) -> ImportResult:
         data = parse_mapzeroth(path)
         now = datetime.now(timezone.utc).isoformat()
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?, 'Mapzeroth Forever travel graph', 'bundled_travel_database', ?, 5, ?, ?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",

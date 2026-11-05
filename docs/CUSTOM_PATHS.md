@@ -1,7 +1,9 @@
 # Point Goblin Eye at a custom WoW installation
 
 Use this when supported addons are installed somewhere discovery does not check.
-The current version checks `_classic_beta_` inside these WoW installation roots:
+The current version checks `_forever_` inside these WoW installation roots.
+It uses `_classic_beta_` only when that root has no live folder, and never fills
+missing live addons or saves from beta:
 
 - `C:\Program Files (x86)\World of Warcraft`
 - `C:\Program Files\World of Warcraft`
@@ -28,24 +30,29 @@ The current version checks `_classic_beta_` inside these WoW installation roots:
 For example, replace the existing `"questiedb_paths": [],` line with:
 
 ```json
-"questiedb_paths": ["E:/Games/World of Warcraft/_classic_beta_/Interface/AddOns/QuestieDB"],
+"questiedb_paths": ["E:/Games/World of Warcraft/_forever_/Interface/AddOns/QuestieDB"],
 ```
 
 For Alts Forever, use the actual account folder name you see in File Explorer:
 
 ```json
-"alts_forever_paths": ["E:/Games/World of Warcraft/_classic_beta_/WTF/Account/YOUR_ACCOUNT/SavedVariables/AltsForever.lua"],
+"alts_forever_paths": ["E:/Games/World of Warcraft/_forever_/WTF/Account/YOUR_ACCOUNT/SavedVariables/AltsForever.lua"],
 ```
 
 These are individual settings inside the existing JSON object, not replacement
-contents for the whole file. Preserve the commas between settings. Personal
-SavedVariables files appear after the relevant addon has run and WoW has saved
+contents for the whole file. Preserve the commas between settings. Explicit
+nonempty path lists replace automatic discovery for that source, even while the
+selected file is still missing. Personal SavedVariables files appear after the relevant addon has run and WoW has saved
 with /reload, logout or normal exit. Once the paths are configured, imports
 continue automatically.
 
 Advanced options: individual `auto_*` switches control automatic imports;
-`economic_period` labels new captures, for example `forever-beta`. Changing that
-label does not relabel past observations or establish a region/ruleset match.
+`economic_period` is a configured import label, for example `forever-live`.
+Public AHledger captures preserve it as `import_economic_period`; their observed
+phase remains unknown because the feed does not report one. Capture dates,
+source builds and explicit phase evidence determine applicability. Changing an
+import label never establishes a region/ruleset or turns older prices into live
+launch observations.
 
 ## Manual addon installation
 
@@ -53,7 +60,7 @@ The normal setup uses CurseForge, as described in START-HERE.md. Use these
 steps only if you choose to install an addon manually or need a missing dependency.
 
 Close WoW, download the compatible addon release ZIP, and extract its addon
-folders directly into `World of Warcraft/_classic_beta_/Interface/AddOns`.
+folders directly into `World of Warcraft/_forever_/Interface/AddOns`.
 Each addon folder should contain its `.toc` file directly, without an extra
 wrapper folder. Restart WoW and enable the addon on the character screen.
 

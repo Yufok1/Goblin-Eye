@@ -6,7 +6,7 @@ local window
 local BG = {bgFile="Interface\\Tooltips\\UI-Tooltip-Background",edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=12,insets={left=4,right=4,top=4,bottom=4}}
 local function Safe(s) return (tostring(s or ""):gsub("|", "¦")) end
 local function Button(parent,label,x,y,w,fn)
- local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(w,22);b:SetPoint("TOPLEFT",x,-y);b:SetText(label);b:SetScript("OnClick",fn);return b
+ local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(w,22);b:SetPoint("TOPLEFT",x,-y);b:SetText(label);b:SetScript("OnClick",fn);if AI.SkinButton then AI.SkinButton(b) end;return b
 end
 local function Text(parent,x,y,w,font)
  local t=parent:CreateFontString(nil,"OVERLAY",font or "GameFontHighlightSmall");t:SetPoint("TOPLEFT",x,-y);t:SetWidth(w);t:SetJustifyH("LEFT");t:SetWordWrap(true);return t
@@ -14,14 +14,16 @@ end
 local function Request(page,refresh)
  if not window then return end
  local c=AI.ChatSettingsContext(window.chat);if not c then return end
- window.waitFor=AI.RequestModels(c.id,window.search:GetText(),page or 1,refresh,window.free)
+ AI.RequestModels(c.id,window.search:GetText(),page or 1,refresh,window.free)
  AI.RefreshChatSettings()
 end
 function AI.RefreshChatSettings()
  local f=window;if not f or not f:IsShown() then return end
  local c,s,v,agents,agent=AI.ChatSettingsContext(f.chat)
  if not c then f:Hide();return end
- local loading=f.waitFor and (not v or (v.request_id or 0)<f.waitFor or v.status=="loading")
+ local loading=not v or v.status=="loading"
+ local catalogError=v and v.error
+ if catalogError and catalogError:find("timed out",1,true) then catalogError="Last model refresh timed out. The bridge retries automatically." end
  f.title:SetText(Safe("Settings - " .. c.name))
  f.current:SetText(Safe("Next message: " .. agent .. " | " .. ((c.model or "")~="" and c.model or "configured default")))
  f.defaults:SetText(Safe("Configured model: " .. (v and v.default_model~="" and v.default_model or "agent default") .. " | permissions: " .. (v and v.permission or "waiting for bridge")))
@@ -29,7 +31,7 @@ function AI.RefreshChatSettings()
   local id=agents[i];b:SetShown(id~=nil);b.agent=id;b:SetText(Safe(id or ""));b:SetEnabled(id~=agent)
  end
  f.freeButton:SetEnabled(agent=="kilo");f.freeButton:SetText(f.free and "Free only: ON" or "Free only: OFF")
- f.status:SetText(Safe(loading and "Fetching models from the agent CLI..." or (v and v.status=="ready" and (v.total .. " matches / " .. v.catalog_total .. " models. Refreshed " .. date("%H:%M:%S",v.fetched_at) .. ".") or (v and v.error or "Connect the bridge to fetch its current model list."))))
+ f.status:SetText(Safe(loading and "Waiting for the bridge's background model catalog..." or (v and v.status=="ready" and (v.total .. " matches / " .. v.catalog_total .. " models. Cached " .. date("%H:%M:%S",v.fetched_at) .. "." .. (v.error~="" and v.error and " Refresh failed; using saved list." or "")) or (catalogError or "Start the bridge to receive model lists."))))
  local ready=v and v.status=="ready" and not loading
  for i,b in ipairs(f.rows) do
   local m=ready and v.items[i] or nil;b.model=m;b:SetShown(m~=nil)
@@ -53,7 +55,7 @@ function AI.RefreshChatSettings()
  end
  f.restrict:SetEnabled(v and v.can_restrict or false)
  f.restrict:SetText(c.restrict and "Research mode: ON" or "Use configured permissions")
- f.context:SetText(s.context and "Character context: ON" or "Character context: OFF")
+ f.context:SetText("Research: saved addon files"); f.context:Disable()
  f.echo:SetText("Chat echo: " .. tostring(s.echo));f.font:SetText("Text size: " .. tostring(s.fontSize))
 end
 function AI.ShowChatSettings(id)
@@ -68,12 +70,12 @@ function AI.ShowChatSettings(id)
   f.current=Text(f,16,44,628);f.defaults=Text(f,16,62,628)
   f.agents={}
   for i=1,6 do f.agents[i]=Button(f,"",16+(i-1)*105,89,99,function(b)
-   local chat=AI.ChatSettingsContext(f.chat);if chat then AI.SetAgent(b.agent,chat);f.selected=nil;f.free=false;f.search:SetText("");Request(1) end
+   local chat=AI.ChatSettingsContext(f.chat);if chat then AI.SetAgent(b.agent,chat);f.selected=nil;f.free=false;f.search:SetText("");f.catalogPollUntil=GetTime()+120;Request(1) end
   end) end
   f.search=CreateFrame("EditBox",nil,f,"InputBoxTemplate");f.search:SetSize(272,22);f.search:SetPoint("TOPLEFT",24,-120);f.search:SetAutoFocus(false);f.search:SetMaxLetters(100)
   f.search:SetScript("OnEnterPressed",function(self)self:ClearFocus();Request(1)end);f.search:SetScript("OnEscapePressed",function(self)self:ClearFocus()end)
   Button(f,"Search",305,120,72,function()f.search:ClearFocus();Request(1)end)
-  Button(f,"Refresh list",382,120,108,function()Request(1,true)end)
+  Button(f,"Check updates",382,120,108,function()f.catalogPollUntil=GetTime()+120;Request(1,true)end)
   f.freeButton=Button(f,"Free only: OFF",496,120,147,function()f.free=not f.free;Request(1)end)
   f.status=Text(f,16,151,625)
   f.rows={}
@@ -94,14 +96,21 @@ function AI.ShowChatSettings(id)
   f.reasonButtons={}
   for i=1,8 do f.reasonButtons[i]=Button(f,"",16+(i-1)*79,546,73,function(b)local chat=AI.ChatSettingsContext(f.chat);if chat then chat[b.key]=b.value~="" and b.value or nil;AI.RefreshChatSettings()end end)end
   f.restrict=Button(f,"",16,578,241,function()local chat=AI.ChatSettingsContext(f.chat);if chat then chat.restrict=not chat.restrict;AI.RefreshChatSettings()end end)
-  f.context=Button(f,"",264,578,220,function()local _,s=AI.ChatSettingsContext(f.chat);s.context=not s.context;AI.RefreshChatSettings()end)
+  f.context=Button(f,"",264,578,220,function()local _,s=AI.ChatSettingsContext(f.chat);s.context=false;AI.RefreshChatSettings()end)
   Button(f,"Voice settings",491,578,152,function()AI.ShowVoiceSettings()end)
   f.echo=Button(f,"",16,608,190,function()local _,s=AI.ChatSettingsContext(f.chat);local order={summary="full",full="off",off="summary"};s.echo=order[s.echo] or "summary";AI.RefreshChatSettings()end)
   Button(f,"A-",215,608,45,function()local _,s=AI.ChatSettingsContext(f.chat);s.fontSize=math.max(11,s.fontSize-1);AI.Render();AI.RefreshChatSettings()end)
   Button(f,"A+",266,608,45,function()local _,s=AI.ChatSettingsContext(f.chat);s.fontSize=math.min(22,s.fontSize+1);AI.Render();AI.RefreshChatSettings()end)
   f.font=Text(f,320,614,140)
-  Text(f,16,643,625):SetText("Model and reasoning choices apply to this chat's next message. Changing them starts a fresh agent session; visible history stays. Character context, echo, text size and voice settings apply across chats. Research mode only tightens configured permissions.")
+  Text(f,16,643,625):SetText("Model and reasoning choices apply to this chat's next message. Changing them starts a fresh agent session; visible history stays. Research uses saved addon files. Echo, text size and voice settings apply across chats. Research mode only tightens configured permissions.")
   window=f
  end
  window.chat=c.id;window.selected=nil;window.free=false;window.search:SetText("");window:Show();Request(1)
+ window.catalogPollUntil=GetTime()+120
+ AI.SyncModelCatalogs()
+end
+function AI.PollSettingsCatalogs()
+ if not window or not window:IsShown() or GetTime() > (window.catalogPollUntil or 0) then return end
+ local _,_,v=AI.ChatSettingsContext(window.chat)
+ if not v or v.status=="loading" or (v.status=="error" and v.error and v.error:find("timed out",1,true)) then AI.SyncModelCatalogs() end
 end

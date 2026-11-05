@@ -7,7 +7,7 @@ from .discovery import discover_addon_paths
 
 
 def record_error(database, source_key, name, source_type, url, rank, exc):
-    with database.transaction() as connection:
+    with database.write_transaction() as connection:
         connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,last_error)
             VALUES (?,?,?,?,?,?) ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""",
             (source_key, name, source_type, url, rank, str(exc)))
@@ -58,7 +58,7 @@ class StaticAddonWatcher:
 
 class QuestieDbWatcher(StaticAddonWatcher):
     addon, marker = "QuestieDB", "QuestieDB_Forever.toc"
-    files = (marker,)
+    files = (marker, "support/Forever/Zones/areaIdToUiMapId.lua")
     source_key, source_type, rank = "questiedb-forever", "bundled_world_database", 5
 
     def __init__(self, *args, **kwargs):

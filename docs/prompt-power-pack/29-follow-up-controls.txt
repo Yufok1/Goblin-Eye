@@ -1,0 +1,38 @@
+FOLLOW-UP CONTROLS
+Paste one into the same conversation after a numbered prompt.
+
+ZOOM IN
+Research the best-supported option from your previous answer more deeply; state which you chose. Follow its IDs and evidence references. Resolve its largest uncertainty first and disclose remaining search coverage.
+
+CHANGE THE TRADEOFF
+Re-rank the supported options separately for less preparation, less spending, solo access and novelty. Explain what changes and what I give up. Do not invent time or cost estimates.
+
+EVIDENCE ONLY
+Strip this answer down to supported observations, their sources and dates. Separate the conclusions that still require assumptions.
+
+SPECULATE RESPONSIBLY
+Give me up to three hypotheses suggested by these findings. For each: supporting evidence, assumptions, counterevidence, a practical test, and a rejection condition. Do not upgrade a hypothesis into a fact.
+
+FOLLOW THE CONNECTION
+What else is this item, recipe, source or location connected to that could matter to my selected character? Follow supported IDs and distinguish documented relationships from inferred usefulness.
+
+SHOW THE CALCULATION
+Show the inputs, units, source dates and arithmetic behind that estimate. Separate observed measurements from assumptions, and stop if a necessary input is missing.
+
+BOUNDED EXPANSION
+Choose one promising adjacent zone, source type or level range justified by the findings and expand the search to that explicit scope. Page that scope and state what remains unsearched. Do not interpret a partial search as absence.
+
+COUNTERCASE
+What is the strongest evidence-supported reason to reject your recommendation? What observation would change your mind?
+
+ONE NEXT STEP
+Give me one useful manual next step and why it matters. Keep it under 80 words.
+
+LISTENING VERSION
+Rewrite the supported findings as a short spoken briefing. Put references after the briefing. Keep the main uncertainty audible.
+
+PROVIDER HANDOFF
+Prepare a copyable handoff for another connected provider: question, character/snapshot identity, market if relevant, findings with references and dates, unresolved issues and next scoped research step. Include no credentials or machine-specific configuration. Do not send it anywhere.
+
+NO PRIOR CONTEXT
+If a follow-up has no earlier result to work from, give a brief evidence-based overview and identify the best-supported next research question. Do not invent an earlier discussion or require a filled-in template.

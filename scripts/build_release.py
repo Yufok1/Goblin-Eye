@@ -28,7 +28,7 @@ ROOT_FILES = (
     "wow-ai/README.md", "wow-ai/VOICE.md", "wow-ai/LICENSE", "wow-ai/UPSTREAM.md", "wow-ai/.gitignore",
     "wow-ai/package.json", "wow-ai/package-lock.json", "wow-ai/build-addon.js", "wow-ai/setup.js",
 )
-ROOT_TREES = ("src", "migrations", "docs", "python", "web/src", "web/public", "web/dist",
+ROOT_TREES = ("src", "migrations", "docs", "integrations", "python", "web/src", "web/public", "web/dist",
               "wow-ai/bridge", "wow-ai/addon/WoWAI", "wow-ai/docs", "Goblin-Eye-Chat")
 VENDORED_ROOT = "python"
 # Matched anywhere in a relative path.
@@ -42,6 +42,7 @@ EXCLUDED_PARTS = {
 EXCLUDED_ROOTS = {"dist", "build", "releases"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".pyd", ".db", ".sqlite", ".sqlite3", ".log", ".zip"}
 REQUIRED_FILES = (
+    "integrations/alts-forever/GoblinEyeExport.lua",
     "src/goblin_eye/__main__.py",
     "src/goblin_eye/ingestion/static_watcher.py",
     "src/goblin_eye/ingestion/discovery.py",
@@ -70,6 +71,8 @@ PRIVATE_PATTERNS = (
 FORBIDDEN_NAMES = {".mcp.json", ".mcp.jsonc", ".codex", ".claude", "config.json",
                    "kilo.json", "state.json", "transcripts.json", "speech-settings.json",
                    "neural-voice.json", "bridge.lock"}
+# These existing, project-owned UI textures are binary, not source text.
+OWNED_MEDIA = {"wow-ai/addon/WoWAI/Media/GoblinEye.png", "wow-ai/addon/WoWAI/Media/GoblinEye.tga"}
 # A fixed DOS timestamp keeps the archive byte-identical across runs.
 FIXED_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 
@@ -133,6 +136,17 @@ def audit(files: dict[str, bytes]) -> None:
         for pattern, description in PRIVATE_PATTERNS:
             if pattern.search(body):
                 raise SystemExit(f"{description} found in {name}")
+        if name in OWNED_MEDIA:
+            valid=False
+            if name.endswith('.png'):
+                valid=(len(body)<=2_000_000 and body.startswith(b'\x89PNG\r\n\x1a\n')
+                    and body[12:16]==b'IHDR' and body.endswith(b'\x00\x00\x00\x00IEND\xaeB\x60\x82'))
+            elif len(body)>=18:
+                width,height=int.from_bytes(body[12:14],'little'),int.from_bytes(body[14:16],'little')
+                valid=(body[:3]==b'\x00\x00\x02' and body[16]==32
+                    and 0<width<=1024 and 0<height<=1024 and len(body)==18+width*height*4)
+            if not valid: raise SystemExit(f'Invalid owned UI texture: {name}')
+            continue
         try:
             body.decode("utf-8")
         except UnicodeDecodeError as exc:

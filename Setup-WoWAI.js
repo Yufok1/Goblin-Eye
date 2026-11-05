@@ -32,7 +32,7 @@ function atomic(file,data) {
 function json(file,data){atomic(file,JSON.stringify(data,null,2)+'\n');}
 function mcpConfigs(root) {
  const python=path.join(root,'python','python.exe');
- const args=['-m','goblin_eye','--config',path.join(root,'config.json'),'--database',path.join(root,'data','goblin-eye.db'),'mcp'];
+ const args=['-m','goblin_eye','--config',path.join(root,'config.json'),'mcp'];
  const env={PYTHONPATH:path.join(root,'src')};
  return {
   '.mcp.json':JSON.stringify({mcpServers:{goblin_eye:{command:python,args,env}}},null,2)+'\n',
@@ -42,7 +42,7 @@ function mcpConfigs(root) {
  };
 }
 function install(root,client,account,agent) {
- if(!isClient(client))throw Error('Select the client folder containing Wow*.exe and Interface (for example _classic_beta_).');
+ if(!isClient(client))throw Error('Select the client folder containing Wow*.exe and Interface (for example _forever_).');
  if(!accounts(client).includes(account))throw Error('Select an existing account folder. Log into WoW once if none exists.');
  if(!A.normalizeAgent(agent))throw Error('Unknown agent: '+agent);
  const bridge=path.join(root,'wow-ai','bridge'),configFile=path.join(bridge,'config.json');
@@ -61,14 +61,14 @@ function install(root,client,account,agent) {
  for(const [id,block] of Object.entries(example.agents))cfg.agents[id]??=block;
  const backup=path.join(root,'wow-ai','backups','setup-'+Date.now());
  function backupFile(file,relative) {
-  if(fs.existsSync(file)){const dest=path.join(backup,relative);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(file,dest);}
+  if(fs.existsSync(file)){const dest=path.join(backup,relative);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.cpSync(file,dest,{recursive:true});}
  }
  backupFile(configFile,'config.json');
  const addon=path.join(cfg.addonDir,'WoWAI');fs.mkdirSync(addon,{recursive:true});
  for(const file of fs.readdirSync(path.join(root,'wow-ai','addon','WoWAI'))) {
   const target=path.join(addon,file);
   if(file==='Inbox.lua'&&fs.existsSync(target))continue;
-  backupFile(target,'addon/'+file);fs.copyFileSync(path.join(root,'wow-ai','addon','WoWAI',file),target);
+  backupFile(target,'addon/'+file);fs.cpSync(path.join(root,'wow-ai','addon','WoWAI',file),target,{recursive:true});
  }
  for(const [name,content] of Object.entries(mcpConfigs(root))) {
   const target=path.join(project,name);backupFile(target,'chat/'+name);atomic(target,content);

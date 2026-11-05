@@ -116,6 +116,32 @@ class ResearchService:
             row["trust_rank"], -float(row["confidence"]), row.get("name") or ""))
         return results[:limit]
 
+    def evidence_page(self,query,limit=25,offset=0):
+        integer(limit,'limit',1,100); integer(offset,'offset'); text(query,'query',empty=True)
+        if not query.strip(): return dict(records=[],total=0,limit=limit,offset=offset)
+        parts=[]
+        for kind,table,key in (('item','items','id'),('recipe','recipes','id'),('vendor','vendors','id'),
+                               ('mob','mobs','id'),('camp','camps','id'),('item','item_observations','item_id')):
+            parts.append(f'''SELECT '{kind}' entity_type,e.{key} entity_id,e.name,e.retrieved_at,e.game_build,
+                e.confidence,e.evidence_kind,e.raw_reference,s.source_key,s.name source_name,s.url source_url,s.trust_rank
+                FROM {table} e JOIN sources s ON s.id=e.source_id WHERE instr(lower(e.name),lower(?))>0''')
+        parts.append('''SELECT 'recipe_fact',r.id,r.name,d.retrieved_at,d.game_build,d.confidence,d.evidence_kind,
+            r.raw_reference,s.source_key,s.name,s.url,s.trust_rank FROM recipe_facts r
+            JOIN research_datasets d ON d.id=r.dataset_id JOIN sources s ON s.id=d.source_id
+            WHERE d.active=1 AND instr(lower(r.name),lower(?))>0''')
+        parts.append('''SELECT w.entity_type,w.entity_id,w.name,d.retrieved_at,d.game_build,d.confidence,d.evidence_kind,
+            w.raw_reference,s.source_key,s.name,s.url,s.trust_rank FROM world_entity_facts w
+            JOIN research_datasets d ON d.id=w.dataset_id JOIN sources s ON s.id=d.source_id
+            WHERE d.active=1 AND instr(lower(w.name),lower(?))>0''')
+        union=' UNION ALL '.join(parts); args=[query.strip()]*len(parts)
+        with self.database.transaction() as c:
+            total=c.execute('SELECT count(*) FROM ('+union+')',args).fetchone()[0]
+            rows=c.execute('SELECT * FROM ('+union+''') ORDER BY lower(name)=lower(?) DESC,
+                trust_rank,confidence DESC,name COLLATE NOCASE,entity_type,entity_id,source_key,raw_reference
+                LIMIT ? OFFSET ?''',(*args,query.strip(),limit,offset)).fetchall()
+        return dict(records=[dict(r) for r in rows],total=total,limit=limit,offset=offset,
+            interpretation='Source assertions, including possible duplicates across sources. Follow entity IDs to focused tools; this page omits coordinate arrays and raw payloads deliberately.')
+
     def market_observations(self, item_id: int | None = None, market_key: str | None = None,
                             limit: int = 100) -> list[dict[str, Any]]:
         integer(limit, "limit", 1, 1000)
@@ -231,6 +257,8 @@ class ResearchService:
 
     def item(self, item_id: int) -> dict[str, Any] | None:
         integer(item_id, "item_id", 1)
+        from goblin_eye.item_properties import ItemProperties
+        properties = ItemProperties(self.database).get(item_id)
         with self.database.transaction() as connection:
             selected = connection.execute('SELECT * FROM selected_item_names WHERE item_id=?',(item_id,)).fetchone()
             item = None
@@ -245,7 +273,7 @@ class ResearchService:
                         FROM world_entity_facts w JOIN research_datasets d ON d.id=w.dataset_id
                         JOIN sources s ON s.id=d.source_id WHERE w.dataset_id=? AND w.entity_type='item' AND w.entity_id=?""",
                         (selected['dataset_id'],item_id)).fetchone()
-            if not item and not self.graph.search_items(str(item_id),1)['items']:
+            if not item and properties['status'] == 'not_recorded' and not self.graph.search_items(str(item_id),1)['items']:
                 return None
             listings = connection.execute(
                 """SELECT m.market_key, sn.source_id, sn.captured_at, sn.external_id, l.quantity, l.stack_size, l.buyout_copper,
@@ -280,6 +308,7 @@ class ResearchService:
             ).fetchall()
             result = dict(item or observed_item) if (item or observed_item) else {"item_id": item_id, "name": None}
             result["item_id"] = item_id
+            result['item_properties'] = properties
             result['identity_selection_policy'] = 'Source trust rank, newest retrieval, confidence, deterministic tie. Build applicability must be checked; world relationship names remain source-specific.'
             result['price_observation_limit'] = 500
             result['price_observations_truncated'] = connection.execute('SELECT count(*) FROM price_observations WHERE item_id=?',(item_id,)).fetchone()[0] > 500
@@ -386,6 +415,10 @@ class ResearchService:
                 (SELECT COUNT(*) FROM price_observations po WHERE po.source_id=s.id) price_record_count,
                 (SELECT COUNT(*) FROM item_observations io WHERE io.source_id=s.id) item_record_count,
                 (SELECT COUNT(*) FROM source_documents sd WHERE sd.source_id=s.id) cached_document_count,
+                CASE WHEN s.source_key='local-alts-forever' THEN (SELECT count(*) FROM item_instance_facts) ELSE 0 END item_instance_record_count,
+                CASE WHEN s.source_key='local-questie' THEN (SELECT count(*) FROM character_quest_snapshots) ELSE 0 END quest_snapshot_count,
+                (SELECT count(*) FROM enchant_facts e JOIN research_datasets rd ON rd.id=e.dataset_id
+                 WHERE rd.source_id=s.id AND rd.active=1) enchant_record_count,
                 (SELECT COUNT(*) FROM recipe_facts rf JOIN research_datasets rd ON rd.id=rf.dataset_id
                  WHERE rd.source_id=s.id AND rd.active=1) recipe_record_count,
                 (SELECT COUNT(*) FROM acquisition_facts af JOIN research_datasets rd ON rd.id=af.dataset_id
@@ -404,12 +437,8 @@ class ResearchService:
                 ), '') newest_snapshot
                 FROM sources s ORDER BY s.trust_rank, s.name"""
             )]
-            snapshots = connection.execute(
-                """SELECT MAX(newest) newest, SUM(count) count FROM (
-                SELECT MAX(captured_at) newest, COUNT(*) count FROM snapshots
-                UNION ALL
-                SELECT MAX(CASE WHEN s.source_key='local-auctionator' THEN po.observed_date||'T00:00:00+00:00' ELSE po.source_modified_at END) newest, COUNT(*) count FROM price_observations po JOIN sources s ON s.id=po.source_id)"""
-            ).fetchone()
+            from goblin_eye.freshness import evidence_freshness
+            freshness = evidence_freshness(connection, self.settings.market_key, self.settings.stale_after_hours)
             markets = [dict(row) for row in connection.execute(
                 """SELECT m.market_key,m.name,m.region,m.ruleset,m.faction,m.is_verified,
                 (SELECT MAX(captured_at) FROM snapshots WHERE market_id=m.id) latest_listing_scan,
@@ -428,7 +457,7 @@ class ResearchService:
         ):
             if discover_addon_paths(addon, marker):
                 unconnected_addons.append({"addon": addon, "status": "no_importer", "notes": supplies})
-        newest = snapshots["newest"] if snapshots else None
+        newest = max((p["observed_at"] for p in freshness["local_prices"] if p["observed_at"]), default=None)
         age_hours = None
         if newest:
             captured = datetime.fromisoformat(newest.replace("Z", "+00:00"))
@@ -440,7 +469,9 @@ class ResearchService:
             "newest_snapshot": newest,
             "snapshot_count": sum(s["snapshot_count"] for s in sources),
             "price_record_count": sum(s["price_record_count"] for s in sources),
-            "freshness_scope": "Newest WoW Forever auction evidence; local scans and public references have separate source timestamps.",
+            "freshness_scope": "Selected local market price evidence only; public markets, listing scans and character captures have separate freshness.",
+            "freshness": freshness,
+            "selected_market_has_prices": any(p["has_evidence"] for p in freshness["local_prices"]),
             "age_hours": round(age_hours, 2) if age_hours is not None else None,
             "is_stale": age_hours is None or age_hours > self.settings.stale_after_hours,
             "markets": markets,
@@ -575,11 +606,12 @@ class ResearchService:
                 for table in ("items", "item_observations", "recipes", "vendors", "mobs", "camps",
                               "snapshots", "listings", "price_observations", "source_documents",
                               "research_datasets", "recipe_facts", "reagent_facts", "world_entity_facts", "acquisition_facts",
-                              "travel_nodes", "travel_edges", "auction_rows")
+                              "travel_nodes", "travel_edges", "auction_rows", "item_instance_facts",
+                              "character_quest_snapshots", "enchant_facts", "dungeon_labels", "dungeon_memberships")
             }
             stored_counts = dict(counts)
             # Archived world revisions remain inspectable but do not double the active graph's coverage.
-            for table in ("recipe_facts", "world_entity_facts", "acquisition_facts", "travel_nodes", "travel_edges"):
+            for table in ("recipe_facts", "world_entity_facts", "acquisition_facts", "travel_nodes", "travel_edges", "enchant_facts", "dungeon_labels", "dungeon_memberships"):
                 counts[table] = connection.execute(f"SELECT COUNT(*) FROM {table} f JOIN research_datasets d ON d.id=f.dataset_id WHERE d.active=1").fetchone()[0]
             counts["research_datasets"] = connection.execute("SELECT COUNT(*) FROM research_datasets WHERE active=1").fetchone()[0]
             counts["reagent_facts"] = connection.execute("""SELECT COUNT(*) FROM reagent_facts f
@@ -594,6 +626,7 @@ class ResearchService:
             "record_counts": counts,
             "stored_record_counts": stored_counts,
             "freshness": {
+                **source_health["freshness"],
                 "newest_snapshot": source_health["newest_snapshot"],
                 "is_stale": source_health["is_stale"],
             },

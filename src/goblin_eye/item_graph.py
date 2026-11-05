@@ -28,6 +28,9 @@ class ItemGraph:
             SELECT item_id FROM item_observations UNION SELECT id FROM items
             UNION SELECT item_id FROM auction_rows
             UNION SELECT item_id FROM character_item_observations
+            UNION SELECT a.item_id FROM acquisition_facts a JOIN research_datasets d ON d.id=a.dataset_id WHERE d.active=1
+            UNION SELECT item_id FROM item_instance_facts
+            UNION SELECT p.item_id FROM item_property_facts p JOIN research_datasets d ON d.id=p.dataset_id WHERE d.active=1
             UNION SELECT w.entity_id FROM world_entity_facts w JOIN research_datasets d ON d.id=w.dataset_id
                 WHERE d.active=1 AND w.entity_type='item'
             UNION SELECT item_id FROM price_observations WHERE item_id IS NOT NULL
@@ -81,7 +84,7 @@ class ItemGraph:
             (row["id"],))]
         return recipe
 
-    def recipe(self, fact_id: int) -> dict[str, Any] | None:
+    def recipe(self, fact_id: int, snapshot_id=None) -> dict[str, Any] | None:
         integer(fact_id,"fact_id",1)
         with self.database.transaction() as connection:
             row = connection.execute(RECIPE_SELECT + " WHERE r.id=?", (fact_id,)).fetchone()
@@ -93,7 +96,50 @@ class ItemGraph:
             alternatives = connection.execute(RECIPE_SELECT + " WHERE d.active=1 AND r.spell_id=? AND r.id<>?",
                                              (row["spell_id"], fact_id)).fetchall()
             result["other_source_assertions"] = [self._expand(connection, value) for value in alternatives]
-            return result
+        result['learning_plan']=self._learning_plan(result,snapshot_id)
+        return result
+
+    def _learning_plan(self, recipe, snapshot_id):
+        from goblin_eye.research_queries import ResearchQueries
+        assertions=[recipe,*recipe['other_source_assertions']]
+        skills=[{'fact_id':r['id'],'skill_required':r['skill_required'],'source_key':r['source_key'],
+            'game_build':r['game_build'],'basis':r['attributes'].get('required_skill_basis',r['attributes'].get('status','source assertion'))}
+            for r in assertions if r['skill_required'] is not None]
+        patterns=sorted({t['item_id'] for r in assertions for t in r['teaching_items']})
+        sources=[]
+        for item in patterns:
+            page=ResearchQueries(self.database).acquisition(item_id=item,limit=5)
+            records=[]
+            for r in page['records']:
+                v={k:r.get(k) for k in ('id','method','entity_type','entity_id','entity_name','evidence_basis','source_key','game_build','raw_reference')}
+                v['requirements']={k:r.get('entity_attributes',{}).get(k) for k in ('min_level','max_level','rank','dungeon_key','friendly_to')}
+                records.append(v)
+            sources.append({'item_id':item,'status':'sourced_associations' if page['total'] else 'not_recorded',
+                'records':records,'total':page['total'],'next_offset':len(records) if page['total']>len(records) else None,
+                'follow_up':f'get_item_acquisition(item_id={item}, limit=10, offset=next_offset); get_acquisition_evidence(fact_id) for full provenance'})
+        trainer=any(r['attributes'].get('obtainability_basis')=='trainer_source_claim' or r['attributes'].get('tr')==1 for r in assertions)
+        plan={'profession':recipe['profession'],'skill_assertions':skills,
+            'skill_conflict':len({r['skill_required'] for r in skills})>1,
+            'learning_method':'pattern' if patterns else 'trainer_source_claim' if trainer else 'unknown',
+            'pattern_sources':sources,'trainer_location_status':'not_recorded',
+            'reagent_follow_up':[{'item_id':r['item_id'],'quantity':r['quantity'],
+                'instruction':'Read item research for produces recipes and acquisition. Verify output quantities and source requirements before calculating raw-material totals.'} for r in recipe['reagents']],
+            'interpretation':'Pattern source associations retain Classic/Forever labels, not guaranteed current drops. No teaching item does not prove a trainer recipe. A profession skill conflict is unresolved until current-client or build-matched evidence resolves it. Crafter availability must be checked; no Auction House purchases assumed.'}
+        if snapshot_id is not None:
+            integer(snapshot_id,'snapshot_id',1)
+            with self.database.transaction() as c:
+                row=c.execute('SELECT name,payload_json,captured_at FROM character_snapshots WHERE id=?',(snapshot_id,)).fetchone()
+            if not row: raise ValueError('Character snapshot not found')
+            char=json.loads(row['payload_json']).get('character',{})
+            skill=char.get('profs',{}).get(recipe['profession'])
+            known=char.get('recipes',{}).get(recipe['profession'],{}).get(recipe['name']) is True
+            plan['character']={'name':row['name'],'captured_at':row['captured_at'],'skill':skill,
+                'learned_recipe_status':'recorded_known' if known else 'not_recorded',
+                'crafter_status':'recorded_profession' if skill is not None else 'needs_other_crafter_or_unrecorded_profession',
+                'inventory_materials':[{'item_id':r['item_id'],'required':r['quantity'],
+                    'bag_quantity':char.get('bags',{}).get(str(r['item_id'])) if 'bags' in char else None,
+                    'bank_quantity':char.get('bank',{}).get(str(r['item_id'])) if 'bank' in char else None} for r in recipe['reagents']]}
+        return plan
 
     def datasets(self) -> list[dict[str, Any]]:
         with self.database.transaction() as connection:
@@ -110,6 +156,29 @@ class ItemGraph:
             value["limitations"] = json.loads(value.pop("limitations_json"))
             results.append(value)
         return results
+
+    def dataset_page(self,limit=10,offset=0,active=None):
+        integer(limit,'limit',1,100); integer(offset,'offset')
+        if active is not None and type(active) is not bool: raise ValueError('active must be boolean')
+        where=' WHERE d.active=?' if active is not None else ''
+        args=[int(active)] if active is not None else []
+        with self.database.transaction() as c:
+            total=c.execute('SELECT count(*) FROM research_datasets d'+where,args).fetchone()[0]
+            rows=c.execute('''SELECT d.id,d.dataset_key,d.sha256,d.source_version,d.game_build,
+                d.content_phase,d.retrieved_at,d.confidence,d.evidence_kind,d.active,d.limitations_json,
+                s.source_key,s.name source_name,s.url source_url,
+                (SELECT count(*) FROM recipe_facts r WHERE r.dataset_id=d.id) recipe_count,
+                (SELECT count(*) FROM world_entity_facts w WHERE w.dataset_id=d.id) world_entity_count,
+                (SELECT count(*) FROM acquisition_facts a WHERE a.dataset_id=d.id) acquisition_count,
+                (SELECT count(*) FROM item_property_facts p WHERE p.dataset_id=d.id) item_property_count,
+                (SELECT count(*) FROM enchant_facts e WHERE e.dataset_id=d.id) enchant_count
+                FROM research_datasets d JOIN sources s ON s.id=d.source_id'''+where+
+                ' ORDER BY d.active DESC,d.retrieved_at DESC,d.id DESC LIMIT ? OFFSET ?',(*args,limit,offset)).fetchall()
+        records=[]
+        for row in rows:
+            value=dict(row);value['limitations']=json.loads(value.pop('limitations_json'));records.append(value)
+        return dict(records=records,total=total,limit=limit,offset=offset,
+            interpretation='Dataset summary; file manifests are omitted. Inspect cached source documents for original files. Counts are source coverage, not independent verification.')
 
     def acquisition(self, item_id: int, limit: int = 50, offset: int = 0, **filters) -> dict[str, Any]:
         from goblin_eye.research_queries import ResearchQueries
@@ -138,7 +207,7 @@ class ItemGraph:
         items = [dict(row) for row in rows]
         with self.database.transaction() as connection:
             for item in items:
-                raw = connection.execute('SELECT ' + quality_sql('?'), (item['item_id'],)).fetchone()[0]
+                raw = connection.execute('SELECT ' + quality_sql('?1'), (item['item_id'],)).fetchone()[0]
                 item['quality_evidence'] = json.loads(raw) if raw else None
         assertions = []
         for row in facts:

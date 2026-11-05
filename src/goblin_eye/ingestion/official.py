@@ -41,7 +41,7 @@ class BlizzardResearchAdapter:
             request = Request(url, headers={"User-Agent": "Goblin-Eye/0.1 local research"})
             with urlopen(request, timeout=30) as response:
                 documents.append((url, read_stream(response), response.headers.get("Content-Type"), response.headers.get("Cache-Control")))
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute(
                 """INSERT INTO sources(source_key, name, source_type, url, trust_rank, enabled,
                 notes, last_success_at, last_error) VALUES ('blizzard-official', 'Blizzard Entertainment',

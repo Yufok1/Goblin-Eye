@@ -35,6 +35,8 @@ class Settings:
     ahledger_scan_paths: tuple[str, ...] = ()
     auto_import_alts_forever: bool = True
     alts_forever_paths: tuple[str, ...] = ()
+    auto_import_questie_saved: bool = True
+    questie_saved_paths: tuple[str, ...] = ()
     auto_import_questiedb: bool = True
     questiedb_paths: tuple[str, ...] = ()
     auto_import_mapzeroth: bool = True
