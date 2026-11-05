@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bound Windows agent cleanup and recover from failed taskkill helpers when Stop is requested.
+
 - Fix Windows speech pipe encoding for Unicode punctuation and accented names.
 - Select explicitly configured regional Auctionator profiles without inventing a
   realm, explain Questie caches excluded by snapshot import time, and report

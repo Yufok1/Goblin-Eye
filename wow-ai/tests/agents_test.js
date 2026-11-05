@@ -373,3 +373,21 @@ test('resolveCommand: a configured script runs with this node, an npm .cmd shim 
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 });
+
+
+test('Windows cancellation falls back on a failed taskkill exit and uses literal target arguments',()=>{
+ const {EventEmitter}=require('events');const child=new EventEmitter(),helper=new EventEmitter();
+ child.pid=2099;child.kill=()=>{child.killed=true;};helper.kill=()=>{};
+ A.killTree(child,{platform:'win32',spawnProcess:(file,args,opts)=>{
+  assert.equal(file,'taskkill');assert.deepEqual(args,['/pid','2099','/T','/F']);assert.equal(opts.windowsHide,true);return helper;
+ }});
+ helper.emit('close',1);assert.equal(child.killed,true);child.emit('close');
+});
+
+test('Windows cancellation has a bounded fallback when the cleanup helper stalls',async()=>{
+ const {EventEmitter}=require('events');const child=new EventEmitter(),helper=new EventEmitter();
+ child.pid=2099;child.kill=()=>{child.killed=true;};helper.kill=()=>{helper.killed=true;};
+ A.killTree(child,{platform:'win32',spawnProcess:()=>helper,timeoutMs:20});
+ await new Promise(resolve=>setTimeout(resolve,45));
+ assert.equal(child.killed,true);assert.equal(helper.killed,true);child.emit('close');
+});

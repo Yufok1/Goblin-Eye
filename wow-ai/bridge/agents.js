@@ -11,8 +11,8 @@
 //                         command line, so it is length-bounded
 //   hermes  Hermes        `hermes chat -Q`, prompt on stdin
 //
-// Everything is pure (no I/O) except resolveCommand, which looks for the
-// executable on disk. Adding an agent: an entry in AGENTS (args, input, parser,
+// Parsing is pure; command resolution reads disk and explicit cancellation
+// terminates the supplied subprocess. Adding an agent: an entry in AGENTS (args, input, parser,
 // optionally denialRule/allowFlag), a block in config.example.json, a section
 // in docs/AGENTS.md, a case in tests/agents_test.js.
 
@@ -745,10 +745,31 @@ function resolveCommand(id, cfg = {}) {
   return { file: A.command + '.exe', args: [], found: false, note: `install it (${A.install}) or set agents.${id}.path in config.json` };
 }
 
+// Terminate only the explicitly supplied agent subprocess and its descendants.
+function killTree(child, {platform=process.platform, spawnProcess=require('child_process').spawn,
+                         killProcess=process.kill.bind(process), timeoutMs=5000}={}) {
+  if (!child || !child.pid) return;
+  const fallback=()=>{try{child.kill();}catch{}};
+  if(platform==='win32') {
+    let helper;
+    try{helper=spawnProcess('taskkill',['/pid',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});}
+    catch{fallback();return;}
+    // taskkill can fail by exit status, or stall during a launch/exit race.
+    // Keep a bounded fallback until the target's stdio has actually closed.
+    const timer=setTimeout(()=>{fallback();try{helper.kill();}catch{}},timeoutMs);
+    timer.unref?.();
+    child.once('close',()=>clearTimeout(timer));
+    helper.once('error',fallback);
+    helper.once('close',code=>{if(code!==0)fallback();});
+    return;
+  }
+  try{killProcess(-child.pid,'SIGKILL');}catch{fallback();}
+}
+
 module.exports = {
   AGENTS, DEFAULT_AGENT, agentIds, normalizeAgent, displayName, agentConfig,
   grokRules, snippet, contextBlock,
   claudeParser, codexParser, grokParser, agyParser, hermesParser, kiloParser, codexItemLine, grokCall, grokRefusal, shellInner,
   kiloToolLine, kiloDenial,
-  resolveCommand, unwrapShim, nativeNextTo,
+  resolveCommand, unwrapShim, nativeNextTo, killTree,
 };

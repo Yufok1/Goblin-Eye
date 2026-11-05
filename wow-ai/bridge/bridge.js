@@ -244,20 +244,7 @@ function atomicWrite(file, content) {
 
 // Stop a run and whatever it spawned (an npm launcher runs the real binary as a
 // child of its own; on Windows a plain kill would leave that one going).
-function killTree(child) {
-  if (!child || !child.pid) return;
-  if (process.platform === 'win32') {
-    try {
-      const k = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
-      k.on('error', () => { try { child.kill(); } catch {} });
-      return;
-    } catch {}
-  }
-  if (process.platform !== 'win32') {
-    try { process.kill(-child.pid, 'SIGKILL'); return; } catch {}
-  }
-  try { child.kill(); } catch {}
-}
+function killTree(child) { return A.killTree(child); }
 
 // ---------------------------------------------------------------------------
 // What the game reads
