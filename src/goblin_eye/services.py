@@ -437,12 +437,8 @@ class ResearchService:
                 ), '') newest_snapshot
                 FROM sources s ORDER BY s.trust_rank, s.name"""
             )]
-            snapshots = connection.execute(
-                """SELECT MAX(newest) newest, SUM(count) count FROM (
-                SELECT MAX(captured_at) newest, COUNT(*) count FROM snapshots
-                UNION ALL
-                SELECT MAX(CASE WHEN s.source_key='local-auctionator' THEN po.observed_date||'T00:00:00+00:00' ELSE po.source_modified_at END) newest, COUNT(*) count FROM price_observations po JOIN sources s ON s.id=po.source_id)"""
-            ).fetchone()
+            from goblin_eye.freshness import evidence_freshness
+            freshness = evidence_freshness(connection, self.settings.market_key, self.settings.stale_after_hours)
             markets = [dict(row) for row in connection.execute(
                 """SELECT m.market_key,m.name,m.region,m.ruleset,m.faction,m.is_verified,
                 (SELECT MAX(captured_at) FROM snapshots WHERE market_id=m.id) latest_listing_scan,
@@ -461,7 +457,7 @@ class ResearchService:
         ):
             if discover_addon_paths(addon, marker):
                 unconnected_addons.append({"addon": addon, "status": "no_importer", "notes": supplies})
-        newest = snapshots["newest"] if snapshots else None
+        newest = max((p["observed_at"] for p in freshness["local_prices"] if p["observed_at"]), default=None)
         age_hours = None
         if newest:
             captured = datetime.fromisoformat(newest.replace("Z", "+00:00"))
@@ -473,7 +469,9 @@ class ResearchService:
             "newest_snapshot": newest,
             "snapshot_count": sum(s["snapshot_count"] for s in sources),
             "price_record_count": sum(s["price_record_count"] for s in sources),
-            "freshness_scope": "Newest WoW Forever auction evidence; local scans and public references have separate source timestamps.",
+            "freshness_scope": "Selected local market price evidence only; public markets, listing scans and character captures have separate freshness.",
+            "freshness": freshness,
+            "selected_market_has_prices": any(p["has_evidence"] for p in freshness["local_prices"]),
             "age_hours": round(age_hours, 2) if age_hours is not None else None,
             "is_stale": age_hours is None or age_hours > self.settings.stale_after_hours,
             "markets": markets,
@@ -628,6 +626,7 @@ class ResearchService:
             "record_counts": counts,
             "stored_record_counts": stored_counts,
             "freshness": {
+                **source_health["freshness"],
                 "newest_snapshot": source_health["newest_snapshot"],
                 "is_stale": source_health["is_stale"],
             },

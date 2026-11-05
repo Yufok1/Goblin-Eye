@@ -83,7 +83,7 @@ class SpeechManager {
  armVoiceIdle() {clearTimeout(this.idleTimer);this.idleTimer=setTimeout(()=>this.stop(),600000);this.idleTimer.unref?.();}
  ensureWorker() {
   if(!this.worker) {
-   const args=['-I',path.join(this.directory,'neural-worker.py'),'--assets',this.neural.assets,'--parent',String(process.pid)];if(this.neural.quantize===true)args.push('--quantize');
+   const args=['-I','-X','utf8',path.join(this.directory,'neural-worker.py'),'--assets',this.neural.assets,'--parent',String(process.pid)];if(this.neural.quantize===true)args.push('--quantize');
    if(this.neural.engine==='nano')args.push('--engine','nano');
    if(this.neural.device==='hybrid')args.push('--device','hybrid');
    if(this.neural.device==='cuda-fp16')args.push('--device','cuda-fp16');

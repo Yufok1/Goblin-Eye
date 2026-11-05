@@ -1,3 +1,5 @@
+type FreshnessRecord = { market_key?: string; source_key?: string; name?: string; observed_at: string | null; observed_date: string | null; imported_at: string | null; status: string; has_evidence: boolean };
+type EvidenceFreshness = { local_prices?: FreshnessRecord[]; local_listing_scans?: FreshnessRecord[]; public_references?: FreshnessRecord[]; characters?: FreshnessRecord[] };
 type Observation = {
   observation_type: "listing" | "aggregated_price";
   source_key: string; market_key: string; item_id: number | null; item_key?: string; item_name?: string;
@@ -7,9 +9,9 @@ type Observation = {
   quantity?: number; stack_size?: number; buyout_copper?: number; unit_buyout_copper?: number;
   confidence: number; evidence_kind: string;
 };
-type SourceHealth = { newest_snapshot: string | null; snapshot_count: number; age_hours: number | null; is_stale: boolean; markets: Record<string, unknown>[]; sources: Record<string, unknown>[]; adapters: Record<string, unknown>[]; watched_files?: Record<string, unknown>[]; file_import_error_count?: number; unconnected_installed_data_addons?: Record<string, unknown>[] };
+type SourceHealth = { freshness?: EvidenceFreshness; selected_market_has_prices?: boolean; newest_snapshot: string | null; snapshot_count: number; age_hours: number | null; is_stale: boolean; markets: Record<string, unknown>[]; sources: Record<string, unknown>[]; adapters: Record<string, unknown>[]; watched_files?: Record<string, unknown>[]; file_import_error_count?: number; unconnected_installed_data_addons?: Record<string, unknown>[] };
 type NextData = { headline: string; auctionator_price_history_connected: boolean; items: { priority: number; title: string; needed: string; unlocks: string[] }[] };
-type Summary = { product: string; market_key: string; source_count: number; observed_markets: Record<string, unknown>[]; record_counts: Record<string, number>; freshness: { newest_snapshot: string | null; is_stale: boolean }; safety: string };
+type Summary = { product: string; market_key: string; source_count: number; observed_markets: Record<string, unknown>[]; record_counts: Record<string, number>; freshness: EvidenceFreshness & { newest_snapshot: string | null; is_stale: boolean }; safety: string };
 type Catalog = { items: { item_id: number; name: string | null }[]; total: number; limit: number; offset: number };
 type RecipeFact = { id: number; spell_id: number; name: string | null; profession: string; output_item_id: number | null; output_quantity: number | null; skill_required: number | null; source_key: string; source_version: string | null; game_build: string | null; retrieved_at: string; raw_reference: string; confidence: number; limitations: string[]; reagents: { item_id: number; quantity: number; name: string | null }[]; teaching_items: { item_id: number }[] };
 type AcquisitionRecord = { entity_id: number; entity_type: string; entity_name: string | null; method: string; probability: number | null; quest_condition: number; choice_reward: number; evidence_basis: string; source_key: string; source_version: string; retrieved_at: string; raw_reference: string; entity_attributes: Record<string, unknown> };
@@ -190,12 +192,18 @@ async function showItem(itemId: number, desiredSnapshotId?: number, desiredMarke
 
 function renderSources(): void {
   if (!state.sources) return;
+  const evidence = state.sources.freshness;
+  const sections: [string, FreshnessRecord[]][] = [
+    ["Local prices", evidence?.local_prices ?? []], ["Local listing scans", evidence?.local_listing_scans ?? []],
+    ["Public reference markets", evidence?.public_references ?? []], ["Character captures", evidence?.characters ?? []]
+  ];
+  const freshnessCards = sections.map(([title, records]) => `<article class="source-card"><p class="eyebrow">Observation freshness</p><h4>${esc(title)}</h4>${records.map(row => `<div class="source-meta"><strong>${esc(row.name ?? row.market_key ?? "Character")} ${esc(row.source_key ?? "")}</strong><br>${esc(row.status.replaceAll("_", " "))}<br>Observed: ${esc(row.observed_at ?? (row.observed_date ? row.observed_date + " (date only)" : "not captured"))}<br>Imported: ${esc(row.imported_at ?? "none")}</div>`).join("<hr>") || `<p class="muted">No recorded evidence.</p>`}</article>`).join("");
   const sourceCards = state.sources.sources.map(source => `<article class="source-card"><p class="eyebrow">Rank ${esc(source.trust_rank)} · ${esc(source.source_type)}</p><h4>${esc(source.name)}</h4><div class="source-meta">Key: ${esc(source.source_key)}<br>Price records: ${esc(source.price_record_count ?? 0)}<br>Auction rows: ${esc(source.auction_row_count ?? 0)}<br>Recipe records: ${esc(source.recipe_record_count ?? 0)}<br>Acquisition links: ${esc(source.acquisition_record_count ?? 0)}<br>World entities: ${esc(source.world_entity_record_count ?? 0)}<br>Travel nodes: ${esc(source.travel_node_count ?? 0)}<br>Travel connections: ${esc(source.travel_edge_count ?? 0)}<br>Cached documents: ${esc(source.cached_document_count ?? 0)}<br>Last import: ${esc(source.last_success_at ?? "none")}<br>Latest error: ${esc(source.last_error ?? "none")}</div><span class="source-state ${source.last_error ? "blocked" : ""}">${source.last_error ? "Import error" : !source.enabled ? "Disabled" : source.last_success_at ? "Imported" : "Waiting for import"}</span></article>`).join("");
   const adapters = state.sources.adapters.map(adapter => `<article class="source-card"><p class="eyebrow">Ingestion adapter</p><h4>${esc(adapter.display_name)}</h4><div class="source-meta">Inputs: ${esc((adapter.input_types as unknown[]).join(", "))}<br>Needs: ${esc((adapter.needs as unknown[]).join(" · ") || "Nothing")}</div><span class="source-state ${String(adapter.status).startsWith("ready") ? "" : "blocked"}">${esc(adapter.status)}</span></article>`).join("");
   const unconnected = (state.sources.unconnected_installed_data_addons ?? []).map(addon => `<article class="source-card"><p class="eyebrow">Installed data addon</p><h4>${esc(addon.addon)}</h4><div class="source-meta">${esc(addon.notes)}</div><span class="source-state blocked">Importer unavailable</span></article>`).join("");
   const files = (state.sources.watched_files ?? []).filter(file => file.last_status === 'error').map(file => `<article class="source-card"><p class="eyebrow">Saved file import</p><h4>${esc(String(file.path).split(/[\\/]/).pop())}</h4><div class="source-meta">${esc(file.last_error)}<br>Last successful import: ${esc(file.last_import_at ?? 'none')}<br>Changed files or market settings retry immediately; unchanged failures retry after a pause.</div><span class="source-state blocked">Import failed</span></article>`).join('');
   const notes = state.sources.sources.filter(source => source.source_key === 'local-auctionator').map(source => `<p class="muted">${esc(source.notes)}</p>`).join('');
-  $("#sources-view").innerHTML = `<div class="section-heading"><div><p class="eyebrow">Data lineage</p><h3>Source health</h3>${state.sources.file_import_error_count ? `<p class="muted">${esc(state.sources.file_import_error_count)} saved file import(s) failed. Existing evidence is retained.</p>` : ''}${notes}</div></div><div class="source-grid">${files}${sourceCards}${adapters}${unconnected}</div>`;
+  $("#sources-view").innerHTML = `<div class="section-heading"><div><p class="eyebrow">Data lineage</p><h3>Source health</h3>${state.sources.file_import_error_count ? `<p class="muted">${esc(state.sources.file_import_error_count)} saved file import(s) failed. Existing evidence is retained.</p>` : ''}${notes}</div></div><div class="source-grid">${freshnessCards}${files}${sourceCards}${adapters}${unconnected}</div>`;
 }
 
 function renderNextData(): void {
@@ -315,10 +323,10 @@ async function start(): Promise<void> {
     const [summary, observations, sources, nextData] = await Promise.all([fetchJson<Summary>("/api/health"), fetchJson<Observation[]>("/api/market-observations?limit=250"), fetchJson<SourceHealth>("/api/sources"), fetchJson<NextData>("/api/next-data")]);
     state.summary = summary; state.observations = observations; state.sources = sources; state.nextData = nextData;
     const observedMarket = "WoW Forever"; $("#market-name").textContent = String(observedMarket);
-    const freshness = $<HTMLElement>("#freshness-pill"); freshness.innerHTML = `<i></i>${summary.freshness.newest_snapshot ? (summary.freshness.is_stale ? "Stale source data" : "Recent auction evidence") : "Waiting for real data"}`; freshness.classList.toggle("warning", summary.freshness.is_stale);
+    const freshness = $<HTMLElement>("#freshness-pill"); freshness.innerHTML = `<i></i>${summary.freshness.newest_snapshot ? (summary.freshness.is_stale ? "Local price evidence stale" : "Recent local price evidence") : "Waiting for timed local prices"}`; freshness.classList.toggle("warning", summary.freshness.is_stale);
     const metrics = $("#hero-metrics").querySelectorAll(".metric-value"); metrics[0].textContent = String(Object.values(summary.record_counts).reduce((total, value) => total + value, 0)); metrics[1].textContent = String(summary.source_count);
     setView(state.view); renderSources(); renderNextData();
-    freshness.title = "Newest auction evidence across local scans and public references; inspect individual source times.";
+    freshness.title = "Selected local market prices only. Source health separates local scans, public reference markets and character captures.";
   } catch (error) { $("#evidence-grid").innerHTML = `<div class="empty">Could not load local evidence: ${esc(error)}</div>`; }
 }
 
@@ -404,8 +412,8 @@ setInterval(async () => {
   try {
     const [summary,sources,observations] = await Promise.all([fetchJson<Summary>("/api/health"),fetchJson<SourceHealth>("/api/sources"),fetchJson<Observation[]>("/api/market-observations?limit=250")]);
     state.summary=summary;state.sources=sources;state.observations=observations;
-    $("#freshness-pill").textContent=summary.freshness.is_stale ? "Source data stale or unknown" : "Recent auction evidence";
-    $<HTMLElement>("#freshness-pill").title=`Overview refreshed ${new Date().toLocaleTimeString()}; inspect selected source times.`;
+    $("#freshness-pill").textContent=summary.freshness.is_stale ? "Local price evidence stale or unknown" : "Recent local price evidence";
+    $<HTMLElement>("#freshness-pill").title=`Overview refreshed ${new Date().toLocaleTimeString()}; freshness follows selected local prices. See Source health for separate evidence types.`;
     if(state.view==='market') renderMarket();
     if(state.view==='sources') renderSources();
   } catch { $("#freshness-pill").textContent="Refresh failed; displayed records may be old"; }

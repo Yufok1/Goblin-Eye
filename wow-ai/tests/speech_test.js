@@ -103,3 +103,13 @@ test('voice control flag is recognized in pixel and reload transports and reply 
 });
 
 test('full and summary neural replies use adaptive buffering',()=>{const {speech,calls}=fixture();speech.neural={python:'python.exe',assets:'assets'};speech.settings.profile='goblin';speech.say('A full report','full');assert.equal(calls[0].child.data.playback,'adaptive');speech.say('TL;DR: short','summary');assert.equal(calls[0].child.data.playback,'adaptive');speech.stop();});
+
+test('neural summary and full requests use UTF-8 mode and preserve punctuation and accented names',()=>{
+ const {speech,calls}=fixture();speech.neural={python:'private-python',assets:'assets'};speech.settings.profile='goblin';
+ const text='The “quoted” café’s résumé — plain ASCII.\nTL;DR:\nÉowyn’s report.';
+ speech.say(text,'summary');
+ assert.deepEqual(calls[0].args.slice(0,3),['-I','-X','utf8']);
+ assert.equal(calls[0].child.encoding,'utf8');assert.ok(calls[0].child.data.text.includes('Éowyn’s'));
+ speech.say(text,'full');assert.ok(calls[0].child.data.text.includes('“quoted” café’s résumé'));
+ speech.stop();
+});

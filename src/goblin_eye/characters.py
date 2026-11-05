@@ -184,6 +184,9 @@ class CharacterStore:
             namespace=payload.get('namespace')
             row=c.execute('''SELECT * FROM character_quest_snapshots WHERE namespace=? AND character_name=? AND imported_at<=?
                 ORDER BY file_saved_at DESC,id DESC LIMIT 1''',(namespace,snapshot['name'],snapshot['imported_at'])).fetchone()
+            later_cache = None if row else c.execute('''SELECT imported_at FROM character_quest_snapshots
+                WHERE namespace=? AND character_name=? AND imported_at>?
+                ORDER BY imported_at LIMIT 1''',(namespace,snapshot['name'],snapshot['imported_at'])).fetchone()
         capture=payload.get('character',{}).get('goblinEyeQuests')
         if capture:
             observed=datetime.fromtimestamp(capture['capturedAt'],timezone.utc).isoformat()
@@ -198,7 +201,12 @@ class CharacterStore:
                     interpretation='Client completed-quest list captured automatically through Alts. Absence does not establish quest eligibility; faction, level, active quest log and prerequisites still require evidence.')
         if not row:
             return dict(status='not_captured',records=[],total=0,offset=offset,limit=limit,
-                interpretation='No Questie completion cache matches this exact account and full character name. Zero records does not mean zero completed quests.')
+                exclusion_reason='imported_after_snapshot' if later_cache else 'no_matching_cache',
+                snapshot_imported_at=snapshot['imported_at'],
+                matching_cache_imported_at=later_cache['imported_at'] if later_cache else None,
+                interpretation=('A matching Questie cache was imported after this character snapshot and is excluded by the historical cutoff. Query a newer character snapshot; historical evidence is unchanged. '
+                    if later_cache else 'No Questie completion cache matches this exact account and full character name. ')
+                    + 'Zero records does not mean zero completed quests.')
         ids=json.loads(row['payload_json'])['completed']
         age=max(0,(datetime.now(timezone.utc)-datetime.fromisoformat(row['file_saved_at'])).total_seconds())
         return dict(status='recorded',records=[{'quest_id':v,'completed':True} for v in ids[offset:offset+limit]],

@@ -7,11 +7,11 @@ from statistics import median
 from goblin_eye.validation import integer, text, timestamp
 
 def record_capture(c, source_id, market_id, identity, observed_at, retrieved_at, granularity,
-                   points, document_id=None, game_build=None, period='unknown', recovered=False, limitations=()):
+                   points, document_id=None, game_build=None, period='unknown', recovered=False, limitations=(), import_period=None):
     c.execute('''INSERT OR IGNORE INTO market_captures(source_id,market_id,document_id,identity,observed_at,
-        retrieved_at,granularity,game_build,economic_period,recovered,limitations_json)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)''', (source_id,market_id,document_id,identity,observed_at,retrieved_at,
-        granularity,game_build,period,int(recovered),json.dumps(list(limitations))))
+        retrieved_at,granularity,game_build,economic_period,recovered,limitations_json,import_economic_period)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''', (source_id,market_id,document_id,identity,observed_at,retrieved_at,
+        granularity,game_build,period,int(recovered),json.dumps(list(limitations)),period if import_period is None else import_period))
     capture = c.execute('SELECT id FROM market_captures WHERE source_id=? AND market_id=? AND identity=?',
                         (source_id,market_id,identity)).fetchone()[0]
     c.executemany('''INSERT OR IGNORE INTO market_price_points VALUES (?,?,?,?,?,?,?,?)''',
@@ -57,8 +57,8 @@ def public_capture(c, source_id, market_id, document_id, body, retrieved_at, rec
             provider_median_7d=values[4],provider_median_30d=values[5],provider_low_30d=values[6],provider_high_30d=values[7],
             provider_estimated_units_sold_per_day=(values[8] / 10 if len(values) == 9 and values[8] is not None else None)))
     return record_capture(c,source_id,market_id,hashlib.sha256(body).hexdigest(),observed,retrieved_at,
-                          'source_table',points,document_id,period=period,recovered=recovered,
-                          limitations=['AHledger Forever community reference; not a personal scan or completed sale. Public markets remain separate; correspondence to the local economy is not assumed. Provider rolling metrics retain provider semantics. Estimated units sold per day is an AHledger estimate, not confirmed sales.'])
+                          'source_table',points,document_id,period='unknown',import_period=period,recovered=recovered,
+                          limitations=['Configured import period is retained separately; the feed does not verify an observation phase. Use source capture dates for temporal applicability.', 'AHledger Forever community reference; not a personal scan or completed sale. Public markets remain separate; correspondence to the local economy is not assumed. Provider rolling metrics retain provider semantics. Estimated units sold per day is an AHledger estimate, not confirmed sales.'])
 
 def recover_history(database):
     from goblin_eye.auction_policy import reject_external_auctions
@@ -157,7 +157,7 @@ class MarketHistory:
         with self.database.transaction() as c:
             total=c.execute('SELECT count(*)'+base,args).fetchone()[0]
             rows=c.execute('''SELECT p.*,h.observed_at,h.retrieved_at,h.granularity,h.game_build,h.economic_period,
-                h.recovered,h.document_id,h.limitations_json,s.source_key,m.market_key'''+base+
+                h.import_economic_period,h.recovered,h.document_id,h.limitations_json,s.source_key,m.market_key'''+base+
                 " ORDER BY COALESCE(h.observed_at,p.observed_date) DESC,h.id DESC LIMIT ? OFFSET ?",(*args,limit,offset)).fetchall()
         records=[]
         for row in rows:

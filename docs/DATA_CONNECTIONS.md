@@ -74,3 +74,8 @@ first-failure visibility, independent Forever Guide catalogs, and synthetic
 quest handling. The dashboard TypeScript build also passed. The live dashboard
 was restarted and all nine importer workers were observed running; all eleven
 implemented source records had no import error following automatic startup.
+
+Source health separates freshness for selected local prices, local listing scans,
+each public reference market and character captures. Import success never makes
+old captures recent. Public AHledger observation phase is unknown; the configured
+import period is retained separately, including for historical captures.

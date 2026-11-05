@@ -16,7 +16,15 @@ def chunks(text,first=90,following=220):
         current=(current+' '+word).strip()
         if len(current)>=limit*0.7 and re.search(r'[.!?]$',word):yield current;current='';limit=following
     if current:yield current
+def configure_utf8_streams():
+    # The bridge writes UTF-8 JSON over pipes; Windows locale is not its codec.
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='strict')
+
+
 def main():
+    configure_utf8_streams()
     ap=argparse.ArgumentParser();ap.add_argument('--assets',required=True);ap.add_argument('--parent',type=int,required=True)
     ap.add_argument('--quantize',action='store_true');ap.add_argument('--engine',choices=['chatterbox','nano'],default='chatterbox')
     ap.add_argument('--device',choices=['cpu','hybrid','cuda-fp16','cuda-hybrid'],default='cpu');ap.add_argument('--threads',type=int,default=2)

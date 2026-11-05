@@ -131,3 +131,7 @@ data are private. Do not post them in bug reports or include them in shared ZIPs
 - **Grayed playback buttons:** wait for current playback or use Stop, then refresh
   voice status. Older replies need to remain in the local transcript.
 - **Audio error:** test an installed Windows voice and check your output device.
+
+Neural speech uses explicit UTF-8 pipe streams, including Windows installations
+with a legacy system code page. Private voice assets and runtime paths may live
+outside this folder; see [private voice portability](../wow-ai/LOCAL-VOICES.md).

@@ -75,7 +75,7 @@ class LocalAHLedgerAdapter:
         input_types=("AHledger.lua database v2 scan section",),
         supplies=("individual auction rows", "stack quantities", "buyout and bid amounts", "scan identity and timestamp"),
         needs=("real saved AHledger scan",), documentation_url="https://www.curseforge.com/wow/addons/ahledger",
-        notes="Verified against local addon 0.4.6. No uploads; no inventory or settings import; scan completeness unverified.")
+        notes="Reviewed saved scan schema v2. Schema compatibility is distinct from testing populated scans from an installed addon release. No uploads; no inventory/settings import; completeness unverified.")
 
     def import_file(self, database: Database, path: Path) -> ImportResult:
         scans = parse_scan_file(path)

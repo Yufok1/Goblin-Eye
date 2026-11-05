@@ -95,3 +95,20 @@ class WorkerTests(unittest.TestCase):
             for index in range(1,5):player.add(Path(f'C:/chunk{index}.wav'),index,3)
             player.cancel();player.finish();spawn.assert_not_called()
 if __name__=='__main__':unittest.main()
+
+
+class EncodingTests(unittest.TestCase):
+    def test_windows_legacy_streams_are_reconfigured_before_json_input(self):
+        import hashlib
+        text='ASCII; “quotes”; café’s résumé; Éowyn — done.'
+        source=io.BytesIO((json.dumps({'text':text},ensure_ascii=False)+'\n').encode('utf-8'))
+        sink=io.BytesIO()
+        incoming=io.TextIOWrapper(source,encoding='cp1252',errors='surrogateescape')
+        outgoing=io.TextIOWrapper(sink,encoding='cp1252')
+        with patch.object(worker.sys,'stdin',incoming),patch.object(worker.sys,'stdout',outgoing),patch.object(worker.sys,'stderr',outgoing):
+            worker.configure_utf8_streams()
+            decoded=json.loads(incoming.readline())['text']
+            self.assertEqual(decoded,text)
+            self.assertEqual(hashlib.sha256(decoded.encode('utf-8')).hexdigest(),hashlib.sha256(text.encode('utf-8')).hexdigest())
+            outgoing.write(decoded);outgoing.flush()
+            self.assertEqual(sink.getvalue().decode('utf-8'),text)

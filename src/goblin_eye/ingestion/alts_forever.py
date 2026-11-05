@@ -130,7 +130,7 @@ class AltsForeverAdapter:
         supplies=("character progress", "equipment links and slots", "inventory quantities and layout",
                   "professions", "reputation", "recorded bank/mail/recipes"), needs=("WoW-saved Alts Forever file",),
         documentation_url="https://www.curseforge.com/wow/addons/alts-forever",
-        notes="Inspected installed addon 0.10.0 and v2 captures; optional full-link numeric export v1. No game access.")
+        notes="Reviewed saved schema v2 and optional full-link numeric export v1. The base save does not identify the installed addon release. No game access.")
 
     def import_file(self, database: Database, path: Path) -> ImportResult:
         root = parse_alts_file(path)
@@ -166,7 +166,7 @@ class AltsForeverAdapter:
                     level,source_key,source_version,game_build,imported_at,captured_at,evidence_kind,confidence,confidence_basis,
                     raw_reference,sha256,payload_json,limitations_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (f"alts-forever:{namespace}:{name}",name,identity.get('realm') or 'unknown',identity.get('race') or 'unknown',char["class"],char["level"],SOURCE_KEY,
-                     "SavedVariables v2 (inspected addon 0.10.0)",identity.get('build') or 'unknown',now,captured,"observed",0.9,
+                     "SavedVariables v2; installed addon release not recorded",identity.get('build') or 'unknown',now,captured,"observed",0.9,
                      "Direct WoW-saved addon observation; coverage and field freshness vary, not a probability.",
                      reference,digest,body,json.dumps(LIMITATIONS))).lastrowid
                 for slot, link in (char.get("gear") or {}).items():

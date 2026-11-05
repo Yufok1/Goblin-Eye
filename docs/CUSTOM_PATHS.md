@@ -47,8 +47,12 @@ with /reload, logout or normal exit. Once the paths are configured, imports
 continue automatically.
 
 Advanced options: individual `auto_*` switches control automatic imports;
-`economic_period` labels new captures, for example `forever-beta`. Changing that
-label does not relabel past observations or establish a region/ruleset match.
+`economic_period` is a configured import label, for example `forever-live`.
+Public AHledger captures preserve it as `import_economic_period`; their observed
+phase remains unknown because the feed does not report one. Capture dates,
+source builds and explicit phase evidence determine applicability. Changing an
+import label never establishes a region/ruleset or turns older prices into live
+launch observations.
 
 ## Manual addon installation
 

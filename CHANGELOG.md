@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fix Windows speech pipe encoding for Unicode punctuation and accented names.
+- Select explicitly configured regional Auctionator profiles without inventing a
+  realm, explain Questie caches excluded by snapshot import time, and report
+  freshness independently for local prices, scans, public markets and characters.
+- Preserve configured public-price import labels separately from unknown source
+  observation phases through an additive migration; retain original capture dates.
+
 - Discover the Forever live client before beta, respect explicit source paths, and
   keep chat MCP connections on the configured database. Review Alts Forever 1.0.1
   for the existing observation export.

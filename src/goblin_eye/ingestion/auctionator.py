@@ -192,8 +192,8 @@ def select_auctionator_markets(markets, profile):
         if legacy and matches_profile(profile, realm=legacy.group(1), faction=legacy.group(2)):
             selected[key] = (legacy.group(1), legacy.group(2), 'Legacy realm/faction key')
         elif key in rulesets:
-            if known_realm and profile['ruleset'] == rulesets[key]:
-                regional[key] = (profile['realm'], 'unknown', 'Regional ruleset key matched to explicitly configured local_ruleset; source faction and region are unknown')
+            if profile['ruleset'] == rulesets[key] and (known_realm or profile['faction'] != 'unknown'):
+                regional[key] = (profile['realm'], 'unknown', 'Regional ruleset key matched to selected profile and explicit ruleset; the source does not establish realm, faction or region')
             else:
                 skipped.append(key)
         elif known_realm and normalized(key) == normalized(profile['realm']):
@@ -208,7 +208,7 @@ def select_auctionator_markets(markets, profile):
     if len(selected) > 1:
         raise ValueError('Auctionator contains multiple matching realms/factions and no per-market scan timestamp. Set local_realm and local_faction in config.json, or let a new AHledger scan identify this installation first. Existing evidence was retained.')
     if not selected:
-        raise ValueError('No Auctionator market matches this installation. Set local_realm (or import an AHledger scan first); for regional PvP/PvE/RP keys also set local_ruleset explicitly. Saved keys: ' + ', '.join(markets))
+        raise ValueError('No Auctionator market matches this installation. For realm keys set local_realm (or import an AHledger scan first); regional PvP/PvE/RP keys require selected local_ruleset and local_faction. Saved keys: ' + ', '.join(markets))
     return selected, skipped
 
 
@@ -227,7 +227,7 @@ class AuctionatorSavedVariablesAdapter:
         supplies=("observed minimum unit prices", "daily low range", "observed available quantity"),
         needs=("separate raw-listing source for individual auctions and stack sizes",),
         documentation_url="https://www.curseforge.com/wow/addons/auctionator",
-        notes="Inspected Auctionator 339/340 database version 8, serialized and literal market tables. Modern realm/ruleset keys do not identify faction or region. The addon stores aggregated prices, not raw listings.",
+        notes="Reviewed Auctionator saved schema 8 and market schema 2, serialized and literal tables. Installed addon releases and populated-scan validation are distinct from schema compatibility. Modern realm/ruleset keys do not identify faction or region. The addon stores aggregated prices, not raw listings.",
     )
 
     def import_file(self, database: Database, path: Path) -> ImportResult:

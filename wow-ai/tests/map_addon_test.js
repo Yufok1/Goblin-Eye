@@ -197,8 +197,8 @@ test('herb/ore nodes toggle and follow the gathering skill', () => {
   assert.equal(shownPins(vm).length, 4);
   vm.run('SlashCmdList.WOWAIMAP("ore off"); SlashCmdList.WOWAIMAP("herb off")');
   assert.equal(shownPins(vm).length, 0);
-  // The game context reads professions from the same API.
-  assert.match(vm.evaluate('WoWAI.GameContext()'), /Professions: Bergbau 50\/75(\n|$)/);
+  // Local map filters do not export profession research through chat.
+  assert.equal(vm.evaluate('WoWAI.GameContext()'), '');
 });
 
 test('/wow-ai map hide, show, nav and stop', () => {
