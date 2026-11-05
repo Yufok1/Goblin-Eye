@@ -10,7 +10,7 @@ from goblin_eye.ingestion import discovery
 from goblin_eye.ingestion.base import AdapterCapability, ImportResult
 from goblin_eye.ingestion.static_watcher import StaticAddonWatcher
 from goblin_eye.ingestion.foreverguide import ForeverGuideWatcher
-from goblin_eye.ingestion.foreverguide_dungeons import parse_foreverguide_dungeons
+from goblin_eye.ingestion.foreverguide_dungeons import parse_foreverguide_dungeons, ForeverGuideDungeonAdapter
 from goblin_eye.ingestion.official import BlizzardResearchWatcher
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -148,6 +148,30 @@ class AutoImportTests(unittest.TestCase):
             self.assertEqual(watcher.scan_once(), "recovered")
         with self.db.transaction() as connection:
             self.assertEqual(connection.execute("SELECT last_error FROM sources").fetchone()[0], "offline")
+
+    def test_new_loot_header_retains_observation_basis_and_classic_separation(self):
+        self.dungeon_fixture('42')
+        header = '-- Classic loot/rates from ForeverChanges; new dungeon observations refreshed 2026-10-10, build 70291.'
+        original = header + '\nns.LOOT={test={{n="Boss",id=101,items={' \
+                   '{id=201,n="Baseline",p=25},{id=202,n="Added",new=true}}}}}'
+        (self.root/'DungeonLoot.lua').write_text(original)
+        adapter = ForeverGuideDungeonAdapter()
+        adapter.import_file(self.db, self.root)
+        with self.db.transaction() as conn:
+            dataset = conn.execute('SELECT * FROM research_datasets WHERE active=1').fetchone()
+            manifest = json.loads(dataset['manifest_json'])
+            self.assertIsNone(dataset['game_build'])
+            self.assertEqual(manifest['loot_provenance']['forever_observed_on'], '2026-10-10')
+            self.assertEqual(manifest['loot_provenance']['forever_game_build'], '70291')
+            facts = conn.execute('SELECT item_id,evidence_basis,probability FROM acquisition_facts WHERE method IN (\'drop\',\'forever_drop\') ORDER BY item_id').fetchall()
+            self.assertEqual([tuple(row) for row in facts], [(201,'classic_baseline',None),(202,'forever_community',None)])
+        for bad_header in ('-- Loot from an unknown source', header.replace('2026-10-10','2026-99-10')):
+            with self.subTest(header=bad_header):
+                (self.root/'DungeonLoot.lua').write_text(original.replace(header, bad_header))
+                with self.assertRaises(ValueError):
+                    adapter.import_file(self.db, self.root)
+                with self.db.transaction() as conn:
+                    self.assertEqual(conn.execute('SELECT id FROM research_datasets WHERE active=1').fetchone()[0], dataset['id'])
 
 
 if __name__ == "__main__":

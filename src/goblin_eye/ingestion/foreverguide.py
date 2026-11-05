@@ -152,7 +152,7 @@ class ForeverGuideAdapter:
             row = connection.execute("""SELECT d.id FROM research_datasets d JOIN sources s ON s.id=d.source_id
                 WHERE s.source_key=? AND d.dataset_key='acquisition' AND d.sha256=? AND d.active=1""", (SOURCE_KEY, digest)).fetchone()
         if row:
-            with database.transaction() as connection:
+            with database.write_transaction() as connection:
                 connection.execute("UPDATE sources SET last_success_at=?,last_error=NULL WHERE source_key=?",
                                    (datetime.now(timezone.utc).isoformat(),SOURCE_KEY))
             return ImportResult(self.capability.key, SOURCE_KEY, 0, 0, ("Dataset already imported; unchanged.",))
@@ -167,7 +167,7 @@ class ForeverGuideAdapter:
                     coverage.extend(item_coverage)
         now = datetime.now(timezone.utc).isoformat()
         manifest = {name: {"sha256": hashes[name], "path": str(path / name), "bytes": len(body)} for name, body in files.items()}
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?, 'Forever Guide acquisition research', 'bundled_world_database', ?, 5, ?, ?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
@@ -204,7 +204,7 @@ class ForeverGuideWatcher(ProfessionDBWatcher):
             try:
                 self.scan_once()
             except Exception as exc:
-                with self.database.transaction() as connection:
+                with self.database.write_transaction() as connection:
                     connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,last_error)
                         VALUES (?, 'Forever Guide acquisition research', 'bundled_world_database', ?, 5, ?)
                         ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""", (SOURCE_KEY,SOURCE_URL,str(exc)))

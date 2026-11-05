@@ -41,6 +41,11 @@ configured external interval (30 minutes by default). The optional modified WoWA
 are installed separately by the player. Keep the dashboard running for automatic ingestion; MCP queries
 read its database and do not start background import workers.
 
+Background importers queue database writes per local database file within the
+dashboard process. Large imports can make another import wait; dashboard and MCP
+reads continue to use committed evidence while it runs. Source-error logging uses
+the same writer queue. Downloads and source parsing happen outside write scopes.
+
 Discovery checks common Forever client locations independently of other addons.
 For a different install location, set the corresponding addon directory in
 `questiedb_paths`, `mapzeroth_paths`, `professiondb_paths`, or `foreverguide_paths`;

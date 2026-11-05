@@ -60,10 +60,10 @@ def world_filters(query='', entity_type=None, min_level=None, max_level=None, ui
         where.append('w.entity_type=?'); args.append(entity_type)
     if query.strip():
         maps = [k for k,v in ZONE_NAMES.items() if len(query.strip()) >= 3 and query.strip().casefold() in v.casefold()]
-        zone_clause = " OR json_extract(w.attributes_json,'$.ui_map_id') IN (" + ','.join('?' for _ in maps) + ')' if maps else ''
+        zone_clause = " OR " + map_filter(maps) if maps else ''
         where.append('(instr(lower(w.name),lower(?))>0 OR CAST(w.entity_id AS TEXT)=?' + zone_clause + ')')
         args.extend([query.strip(), query.strip()])
-        args.extend(maps)
+        args.extend(maps + maps)
     if zone is not None:
         text(zone, 'zone')
         maps = [k for k,v in ZONE_NAMES.items() if zone.strip().casefold() in v.casefold()]
@@ -71,8 +71,8 @@ def world_filters(query='', entity_type=None, min_level=None, max_level=None, ui
             if dungeon is not None: raise ValueError('Unknown zone alongside dungeon; use a recognized overworld zone or omit zone')
             dungeon=zone
         else:
-            where.append("json_extract(w.attributes_json,'$.ui_map_id') IN (" + ','.join('?' for _ in maps) + ')')
-            args.extend(maps)
+            where.append(map_filter(maps))
+            args.extend(maps + maps)
     if dungeon is not None:
         text(dungeon,'dungeon')
         if database is None: raise ValueError('Dungeon labels require the indexed source database')
@@ -93,6 +93,8 @@ def world_filters(query='', entity_type=None, min_level=None, max_level=None, ui
                             ('ui_map_id', ui_map_id, '='), ('rank', rank, '=')):
         if value is not None:
             integer(value, name, 0 if name == 'rank' else 1)
+            if name == 'ui_map_id':
+                where.append(map_filter([value])); args.extend((value, value)); continue
             expression = f"json_extract(w.attributes_json,'$.{name}')"
             if name in ('min_level', 'max_level'):
                 # Quest difficulty is not the minimum level required to accept it.
@@ -108,6 +110,12 @@ def world_filters(query='', entity_type=None, min_level=None, max_level=None, ui
     if min_level is not None and max_level is not None and min_level > max_level:
         raise ValueError('min_level must not exceed max_level')
     return where, args
+
+
+def map_filter(maps):
+    slots = ','.join('?' for _ in maps)
+    return ("(json_extract(w.attributes_json,'$.ui_map_id') IN (" + slots + ") OR "
+            "EXISTS(SELECT 1 FROM json_each(w.attributes_json,'$.ui_map_ids') WHERE value IN (" + slots + ")))" )
 
 
 class ResearchQueries:

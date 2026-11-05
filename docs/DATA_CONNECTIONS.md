@@ -52,8 +52,12 @@ and static source assertions do not prove current in-game availability.
   imported. Some information may overlap with existing providers.
 - **Booty Bay Broker** and **TheWoWDB** are schema-gated connector stubs. They
   remain unavailable until permitted access, schemas and provenance are verified.
-- **QuestieDB coverage** currently includes NPCs, objects, spawns and waypoints;
-  this is not a full quest/objective import or the player's active quest log.
+- **QuestieDB coverage** includes baked NPCs, objects, spawns, waypoints and
+  quests with source-provided objectives, starters, finishers and requirements.
+  The installed Forever area-to-map table supports named-zone searches while
+  preserving original area IDs. Negative quest-sort categories are not zones.
+  This is not the player's active quest log or proof of current eligibility;
+  client-time faction corrections are not applied by the offline importer.
 - **Mapzeroth coverage** is the static travel graph; it does not import the
   character's flight discoveries, hearthstone or runtime ability calculations.
 - **Alts Forever categories** only populate if that addon has exported them.

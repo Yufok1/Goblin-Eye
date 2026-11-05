@@ -219,7 +219,7 @@ TOOLS.extend([
         {'snapshot_id':_I,'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}},['snapshot_id']),
     _tool('get_acquisition_evidence','Read one exact acquisition fact with full source provenance, raw fields and active/archive status.',{'fact_id':_I},['fact_id']),
     _tool('get_scan_provenance','Read the original retained local scan header: realm, region, faction, addon version, build, count and source document ID. unknown region remains unknown.',{'snapshot_id':_I},['snapshot_id']),
-    _tool('search_world_entities', 'Search active world facts by name/ID, map, whole NPC level range, rank and acquisition method. Use before declaring a mob or zone missing. Counts are source assertions, not verified live spawns.',
+    _tool('search_world_entities', 'Search active world facts including QuestieDB quests by name/ID, zone, map, whole NPC level range, rank and acquisition method. Quest levels mean difficulty, not acceptance level; inspect quest_fields for requirements, starters and objectives. Named zones use sourced area-to-map associations. Static quests do not establish current eligibility or an active quest log. Use before declaring a mob or zone missing. Counts are source assertions, not verified live spawns.',
         {**_FILTERS,'entity_type':{'type':'string','enum':['npc','object','quest','item']}}, []),
     _tool('search_acquisition_sources', 'Search item-to-world associations with filters BEFORE pagination. Useful for level-appropriate farming research and known RARE loot. Does not estimate kills/hour or rank profitability; check professions, rank, historical status and local prices.',
         {**_ACQUISITION_FILTERS,'item_id':_I}, []),

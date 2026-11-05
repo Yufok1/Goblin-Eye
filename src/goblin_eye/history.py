@@ -64,7 +64,7 @@ def recover_history(database):
     from goblin_eye.auction_policy import reject_external_auctions
     reject_external_auctions(database)
     report = {'public_documents':0,'legacy_points':0,'errors':[]}
-    with database.transaction() as c:
+    with database.write_transaction() as c:
         before = c.execute('SELECT count(*) FROM market_captures').fetchone()[0]
         docs = c.execute("SELECT id,source_id,body,retrieved_at FROM source_documents WHERE url LIKE 'https://api.ahledger.com/v1/pricetable/%' ORDER BY id").fetchall()
         for doc in docs:

@@ -81,7 +81,7 @@ class LocalAHLedgerAdapter:
         scans = parse_scan_file(path)
         now = datetime.now(timezone.utc).isoformat()
         count, imported, skipped = 0, 0, 0
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?, 'Local AHledger scans', 'local_addon', ?, 1, ?, ?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
@@ -157,7 +157,7 @@ class LocalAHLedgerWatcher:
                 import logging
                 logging.exception("Source path failed: %s", path)
                 try:
-                    with self.database.transaction() as connection:
+                    with self.database.write_transaction() as connection:
                         connection.execute("""INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
                             VALUES (?,'Local AHledger scans','local_addon',1,?)
                             ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""", (SOURCE_KEY,str(exc)))
@@ -172,7 +172,7 @@ class LocalAHLedgerWatcher:
             try:
                 self.scan_once()
             except Exception as exc:
-                with self.database.transaction() as connection:
+                with self.database.write_transaction() as connection:
                     connection.execute("""INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
                         VALUES (?,'Local AHledger scans','local_addon',1,?)
                         ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""",(SOURCE_KEY,str(exc)))

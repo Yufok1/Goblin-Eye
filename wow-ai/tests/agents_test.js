@@ -96,6 +96,18 @@ test('Antigravity arguments and captured stream parser', () => {
   assert.equal(results[results.length - 1].done.text.trim(), 'HELLO');
 });
 
+test('AGY soft-denied tools override a SUCCESS acknowledgement without leaking diagnostic logs', () => {
+  const p=A.agyParser();
+  p.feed({event:'result',result:{status:'SUCCESS',response:'I will check the evidence.'}});
+  const r=p.finish({diagnostics:'private diagnostic data\nPrint mode: soft-denying tool confirmation "CallMcpTool" at step 2\n'});
+  assert.equal(r.done.error,true);assert.match(r.done.text,/required approval/);assert.match(r.done.text,/Incomplete response/);
+  assert.ok(!r.done.text.includes('private diagnostic data'));
+  const fileDenied=p.finish({diagnostics:'Print mode: soft-denying tool confirmation "ViewFile" at step 20'});
+  assert.match(fileDenied.done.text,/MCP tool grants do not grant file access/);
+  assert.match(fileDenied.done.text,/read-only access to the required documentation/);
+  assert.equal(A.agyParser().finish({diagnostics:'ordinary startup logs'}),null);
+});
+
 test('Hermes command modes, image forwarding and plain text completion', () => {
   const args = A.AGENTS.hermes.args({ cfg: { permissionMode: 'acceptEdits', model: 'm' }, cwd: 'C:\\work', resume: 's1', images: ['a.png'] });
   assert.deepEqual(args, ['chat', '--query-file', '-', '-Q', '--in', 'C:\\work', '--source', 'tool', '--resume', 's1', '-m', 'm', '--image', 'a.png']);

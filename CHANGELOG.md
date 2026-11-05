@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Discover the Forever live client before beta, respect explicit source paths, and
+  keep chat MCP connections on the configured database. Review Alts Forever 1.0.1
+  for the existing observation export.
+- Queue background database writes without blocking committed-evidence reads;
+  import QuestieDB quest requirements and sourced area-to-map mappings.
+- Accept reviewed Forever Guide catalog corrections and updated dungeon
+  provenance while preserving mixed builds and Classic baselines.
+- Add the 28-prompt in-game research library, complete cached model catalogs,
+  automatic model discovery/retries, and clear Antigravity approval failures.
+
 - Observe exact equipped and encountered item variants through Alts Forever, with bounded capture and backups; keep WoWAI as conversation only.
 - Import ProfessionDB applied enchant stats, Questie completion caches and all supported Forever Guide tooltip stat keys.
 - Add report preflight, paged equipment/inventory/datasets/evidence, and sourced dungeon membership filters.

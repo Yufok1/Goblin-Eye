@@ -238,7 +238,7 @@ class AuctionatorSavedVariablesAdapter:
         digest = hashlib.sha256(body).hexdigest()
         scan_at = datetime.fromtimestamp(capture.scan_timestamp, timezone.utc).isoformat() if capture.scan_timestamp else modified
         record_count, market_count, skipped = 0, 0, 0
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             reset_policy = policy(connection)
             if reset_policy and (not capture.scan_timestamp or datetime.fromisoformat(scan_at) <= datetime.fromisoformat(reset_policy['reset_at'])):
                 return ImportResult(self.capability.key, 'local-auctionator', 0, 0, ('Waiting for a new scan after the auction reset.',))
@@ -376,7 +376,7 @@ class AuctionatorWatcher:
             except Exception as exc:
                 if signature is not None:
                     self._failed[path] = (signature, time.monotonic() + max(60, self.interval_seconds))
-                with self.database.transaction() as connection:
+                with self.database.write_transaction() as connection:
                     connection.execute(
                         """INSERT INTO watched_files(path, adapter_key, last_status, last_error)
                         VALUES (?, ?, 'error', ?) ON CONFLICT(path) DO UPDATE SET

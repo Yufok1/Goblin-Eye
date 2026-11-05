@@ -18,6 +18,19 @@ from goblin_eye.ingestion.foreverguide_items import stat_values, TOOLTIP_STATS
 
 ROOT=Path(__file__).resolve().parents[1]
 
+
+def export_contract_fixture(addon, version='0.10.0'):
+    manifest = '## Interface: 16001\n## Version: ' + version + '\nCore.lua\nGear.lua\nScanner.lua\nUpgrades.lua\n'
+    (addon/'AltsForever.toc').write_text(manifest)
+    files = {'Core.lua': 'local DB_VERSION = 2\nfunction ns.On(event, fn) end',
+             'Gear.lua': 'function ns.ScanGear(c) end',
+             'Scanner.lua': 'function ns.ScanContainers(bags, out, layout) end',
+             'Upgrades.lua': 'function ns.ItemScore(link, role) end'}
+    for name, text in files.items():
+        (addon/name).write_text(text)
+    return manifest
+
+
 def lua(value):
     if isinstance(value,dict): return '{'+','.join('['+lua(k)+']='+lua(v) for k,v in value.items())+'}'
     if isinstance(value,list): return lua(dict(enumerate(value,1)))
@@ -254,9 +267,7 @@ class CoverageTests(unittest.TestCase):
 
     def test_installer_is_idempotent_backs_up_and_rejects_changed_contract(self):
         addon=self.path/'AltsForever'; addon.mkdir()
-        (addon/'AltsForever.toc').write_text('## Interface: 16001\n## Version: 0.10.0\nCore.lua\nGear.lua\nScanner.lua\nUpgrades.lua\n')
-        for name,marker in (('Core','On'),('Gear','ScanGear'),('Scanner','ScanContainers'),('Upgrades','ItemScore')):
-            (addon/(name+'.lua')).write_text('function ns.'+marker+'(')
+        export_contract_fixture(addon)
         helper=ROOT/'integrations/alts-forever/GoblinEyeExport.lua'; backup=self.path/'backups'
         self.assertTrue(install_item_export(addon,helper,backup))
         self.assertFalse(install_item_export(addon,helper,backup))
@@ -267,11 +278,9 @@ class CoverageTests(unittest.TestCase):
 
     def test_installer_repairs_edition_manifest_even_when_generic_is_installed(self):
         addon=self.path/'AltsForever'; addon.mkdir()
-        original='## Interface: 16001\n## Version: 0.10.0\nCore.lua\nGear.lua\nScanner.lua\nUpgrades.lua\n'
+        original=export_contract_fixture(addon)
         (addon/'AltsForever.toc').write_text(original+'GoblinEyeExport.lua\n')
         (addon/'AltsForever_Camelot.toc').write_text(original)
-        for name,marker in (('Core','On'),('Gear','ScanGear'),('Scanner','ScanContainers'),('Upgrades','ItemScore')):
-            (addon/(name+'.lua')).write_text('function ns.'+marker+'(')
         helper=ROOT/'integrations/alts-forever/GoblinEyeExport.lua';backup=self.path/'backups'
         (addon/'GoblinEyeExport.lua').write_bytes(helper.read_bytes())
         self.assertTrue(install_item_export(addon,helper,backup))
@@ -282,13 +291,42 @@ class CoverageTests(unittest.TestCase):
 
     def test_unreviewed_edition_manifest_prevents_any_installation(self):
         addon=self.path/'AltsForever'; addon.mkdir()
-        (addon/'AltsForever.toc').write_text('## Interface: 16001\n## Version: 0.10.0\n')
+        export_contract_fixture(addon)
         (addon/'AltsForever_Camelot.toc').write_text('## Interface: 16001\n## Version: changed\n')
         helper=ROOT/'integrations/alts-forever/GoblinEyeExport.lua'
         with self.assertRaisesRegex(ValueError,'AltsForever_Camelot.toc'):
             install_item_export(addon,helper,self.path/'backups')
         self.assertFalse((addon/'GoblinEyeExport.lua').exists())
         self.assertNotIn('GoblinEyeExport.lua',(addon/'AltsForever.toc').read_text())
+
+    def test_reviewed_alts_releases_install_into_both_manifests(self):
+        for version in ('0.13.0', '0.16.0', '1.0.1'):
+            with self.subTest(version=version):
+                addon=self.path/version; addon.mkdir()
+                manifest=export_contract_fixture(addon, version)
+                (addon/'AltsForever_Camelot.toc').write_text(manifest)
+                helper=ROOT/'integrations/alts-forever/GoblinEyeExport.lua'
+                self.assertTrue(install_item_export(addon,helper,self.path/'backups'))
+                self.assertFalse(install_item_export(addon,helper,self.path/'backups'))
+                for name in ('AltsForever.toc', 'AltsForever_Camelot.toc'):
+                    self.assertEqual((addon/name).read_text().splitlines()[-1], 'GoblinEyeExport.lua')
+
+    def test_current_release_rejects_changed_schema_signatures_and_mixed_manifests(self):
+        cases = (('Core.lua', 'local DB_VERSION = 3\nfunction ns.On(event, fn) end'),
+                 ('Gear.lua', 'function ns.ScanGear(c, mode) end'),
+                 ('AltsForever_Camelot.toc', '## Interface: 16001\n## Version: 0.13.0\nCore.lua\nGear.lua\nScanner.lua\nUpgrades.lua\n'),
+                 ('AltsForever_Camelot.toc', '## Interface: 16001\n## Version: 99.0.0\n'),
+                 ('AltsForever_Camelot.toc', '## Interface: 16001\n## Version: 0.16.0\nCore.lua\n'))
+        for index, (name, text) in enumerate(cases):
+            with self.subTest(name=name, text=text):
+                addon=self.path/str(index); addon.mkdir()
+                export_contract_fixture(addon, '0.16.0')
+                (addon/name).write_text(text)
+                with self.assertRaises(ValueError):
+                    install_item_export(addon,ROOT/'integrations/alts-forever/GoblinEyeExport.lua',self.path/'backups')
+                self.assertFalse((addon/'GoblinEyeExport.lua').exists())
+                self.assertFalse((self.path/'backups').exists())
+                self.assertNotIn('GoblinEyeExport.lua', (addon/'AltsForever.toc').read_text())
 
     def test_personal_reset_erases_new_observations(self):
         self.import_save()

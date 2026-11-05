@@ -283,6 +283,7 @@ function grokParser() {
 
 function agyParser() {
   let response = '';
+  let finalText = '';
   return {
     feed(ev) {
       const out = empty();
@@ -310,10 +311,23 @@ function agyParser() {
         const result = ev.result || {};
         if (result.conversation_id) out.session = result.conversation_id;
         const ok = result.status === 'SUCCESS';
-        out.done = { text: String(result.response || response), error: !ok };
+        finalText = String(result.response || response);
+        out.done = { text: finalText, error: !ok };
         if (!ok) out.notes.push(`agy status: ${result.status || 'unknown'}`);
       }
       return out;
+    },
+    finish({ diagnostics = '' }) {
+      // AGY can report SUCCESS with only its pre-tool acknowledgement after
+      // print mode soft-denies approval. Its per-run log records the denial.
+      const blocked = [...String(diagnostics).matchAll(/Print mode: soft-denying tool confirmation "([^"\r\n]{1,120})"/g)].map(m=>m[1]);
+      if (!blocked.length) return null;
+      const tools = [...new Set(blocked)].join(', ');
+      const guidance = blocked.includes('ViewFile')
+        ? 'Approve read-only access to the required documentation files in Antigravity, then send the request again. MCP tool grants do not grant file access.'
+        : 'Configure approval for the intended research tools in Antigravity, then send the request again.';
+      const text = `Antigravity could not complete this request: ${tools} required approval, and non-interactive mode denied it. ${guidance}`;
+      return { done: { error: true, text: text + ((finalText || response) ? '\n\nIncomplete response before the blocked tool:\n' + (finalText || response) : '') } };
     },
   };
 }

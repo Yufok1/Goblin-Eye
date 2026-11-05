@@ -201,12 +201,12 @@ function AI.DrawEvidence(b, message, offset, width, refresh)
  local header = b.evidenceHeader
  header:ClearAllPoints(); header:SetPoint("TOPLEFT", b.body, "BOTTOMLEFT", 0, -6 - offset)
  header:SetWidth(math.min(310, width - 24)); header:Show()
- header:SetText((message.evidenceOpen == false and "[+]" or "[-]") .. " Evidence - " .. #cards .. " cards")
- header:SetScript("OnClick", function() message.evidenceOpen = message.evidenceOpen == false; refresh() end)
+ header:SetText((message.evidenceOpen and "[-]" or "[+]") .. " Evidence - " .. #cards .. " cards")
+ header:SetScript("OnClick", function() message.evidenceOpen = not message.evidenceOpen; refresh() end)
  offset = offset + 28
  local pageCount = math.ceil(#cards / 3)
  message.evidencePage = math.max(1, math.min(pageCount, message.evidencePage or 1))
- if message.evidenceOpen ~= false then
+ if message.evidenceOpen then
   message.evidenceDetails = message.evidenceDetails or {}
   for i = (message.evidencePage - 1) * 3 + 1, math.min(message.evidencePage * 3, #cards) do
    local card = cards[i]
@@ -316,13 +316,13 @@ function AI.DrawResearch(b, message, offset, width, refresh)
  end
  local pages
  y, pages = AI.DrawEvidence(b, message, y, width, refresh)
- if pages and pages > 1 and message.evidenceOpen ~= false then
+ if pages and pages > 1 and message.evidenceOpen then
   local previous = Btn("< Cards", 8, 75, function() message.evidencePage = math.max(1, message.evidencePage - 1); refresh() end)
   local nextPage = Btn("Cards >", 88, 75, function() message.evidencePage = math.min(pages, message.evidencePage + 1); refresh() end)
   previous:SetEnabled(message.evidencePage > 1); nextPage:SetEnabled(message.evidencePage < pages)
   y = y + 26; Text("Evidence page " .. message.evidencePage .. " / " .. pages)
  end
- if research and (research.cards_omitted or 0) > 0 and message.evidenceOpen ~= false then Text(research.cards_omitted .. " earlier cards omitted; inspect tool results or the archive.") end
+ if research and (research.cards_omitted or 0) > 0 and message.evidenceOpen then Text(research.cards_omitted .. " earlier cards omitted; inspect tool results or the archive.") end
  if research and #(research.calls or {}) > 0 then
   Btn((message.researchOpen and "[-]" or "[+]") .. " Research - " .. (research.total or #research.calls) .. " tool calls", 0, math.min(310, width - 24), function() message.researchOpen = not message.researchOpen; refresh() end)
   y = y + 28

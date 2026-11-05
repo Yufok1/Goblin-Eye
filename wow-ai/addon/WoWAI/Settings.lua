@@ -14,14 +14,16 @@ end
 local function Request(page,refresh)
  if not window then return end
  local c=AI.ChatSettingsContext(window.chat);if not c then return end
- window.waitFor=AI.RequestModels(c.id,window.search:GetText(),page or 1,refresh,window.free)
+ AI.RequestModels(c.id,window.search:GetText(),page or 1,refresh,window.free)
  AI.RefreshChatSettings()
 end
 function AI.RefreshChatSettings()
  local f=window;if not f or not f:IsShown() then return end
  local c,s,v,agents,agent=AI.ChatSettingsContext(f.chat)
  if not c then f:Hide();return end
- local loading=f.waitFor and (not v or (v.request_id or 0)<f.waitFor or v.status=="loading")
+ local loading=not v or v.status=="loading"
+ local catalogError=v and v.error
+ if catalogError and catalogError:find("timed out",1,true) then catalogError="Last model refresh timed out. The bridge retries automatically." end
  f.title:SetText(Safe("Settings - " .. c.name))
  f.current:SetText(Safe("Next message: " .. agent .. " | " .. ((c.model or "")~="" and c.model or "configured default")))
  f.defaults:SetText(Safe("Configured model: " .. (v and v.default_model~="" and v.default_model or "agent default") .. " | permissions: " .. (v and v.permission or "waiting for bridge")))
@@ -29,7 +31,7 @@ function AI.RefreshChatSettings()
   local id=agents[i];b:SetShown(id~=nil);b.agent=id;b:SetText(Safe(id or ""));b:SetEnabled(id~=agent)
  end
  f.freeButton:SetEnabled(agent=="kilo");f.freeButton:SetText(f.free and "Free only: ON" or "Free only: OFF")
- f.status:SetText(Safe(loading and "Fetching models from the agent CLI..." or (v and v.status=="ready" and (v.total .. " matches / " .. v.catalog_total .. " models. Refreshed " .. date("%H:%M:%S",v.fetched_at) .. ".") or (v and v.error or "Connect the bridge to fetch its current model list."))))
+ f.status:SetText(Safe(loading and "Waiting for the bridge's background model catalog..." or (v and v.status=="ready" and (v.total .. " matches / " .. v.catalog_total .. " models. Cached " .. date("%H:%M:%S",v.fetched_at) .. "." .. (v.error~="" and v.error and " Refresh failed; using saved list." or "")) or (catalogError or "Start the bridge to receive model lists."))))
  local ready=v and v.status=="ready" and not loading
  for i,b in ipairs(f.rows) do
   local m=ready and v.items[i] or nil;b.model=m;b:SetShown(m~=nil)
@@ -68,12 +70,12 @@ function AI.ShowChatSettings(id)
   f.current=Text(f,16,44,628);f.defaults=Text(f,16,62,628)
   f.agents={}
   for i=1,6 do f.agents[i]=Button(f,"",16+(i-1)*105,89,99,function(b)
-   local chat=AI.ChatSettingsContext(f.chat);if chat then AI.SetAgent(b.agent,chat);f.selected=nil;f.free=false;f.search:SetText("");Request(1) end
+   local chat=AI.ChatSettingsContext(f.chat);if chat then AI.SetAgent(b.agent,chat);f.selected=nil;f.free=false;f.search:SetText("");f.catalogPollUntil=GetTime()+120;Request(1) end
   end) end
   f.search=CreateFrame("EditBox",nil,f,"InputBoxTemplate");f.search:SetSize(272,22);f.search:SetPoint("TOPLEFT",24,-120);f.search:SetAutoFocus(false);f.search:SetMaxLetters(100)
   f.search:SetScript("OnEnterPressed",function(self)self:ClearFocus();Request(1)end);f.search:SetScript("OnEscapePressed",function(self)self:ClearFocus()end)
   Button(f,"Search",305,120,72,function()f.search:ClearFocus();Request(1)end)
-  Button(f,"Refresh list",382,120,108,function()Request(1,true)end)
+  Button(f,"Check updates",382,120,108,function()f.catalogPollUntil=GetTime()+120;Request(1,true)end)
   f.freeButton=Button(f,"Free only: OFF",496,120,147,function()f.free=not f.free;Request(1)end)
   f.status=Text(f,16,151,625)
   f.rows={}
@@ -104,4 +106,11 @@ function AI.ShowChatSettings(id)
   window=f
  end
  window.chat=c.id;window.selected=nil;window.free=false;window.search:SetText("");window:Show();Request(1)
+ window.catalogPollUntil=GetTime()+120
+ AI.SyncModelCatalogs()
+end
+function AI.PollSettingsCatalogs()
+ if not window or not window:IsShown() or GetTime() > (window.catalogPollUntil or 0) then return end
+ local _,_,v=AI.ChatSettingsContext(window.chat)
+ if not v or v.status=="loading" or (v.status=="error" and v.error and v.error:find("timed out",1,true)) then AI.SyncModelCatalogs() end
 end

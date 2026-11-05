@@ -282,7 +282,7 @@ def serve(database: Database, settings: Settings) -> None:
             exports=ensure_item_exports(PROJECT_ROOT,settings.alts_forever_paths)
             if exports:
                 from datetime import datetime, timezone
-                with database.transaction() as c:
+                with database.write_transaction() as c:
                     c.execute('''INSERT INTO sources(source_key,name,source_type,trust_rank,last_success_at,notes)
                         VALUES ('local-alts-forever-export','Alts numeric export setup','local_configuration',1,?,?)
                         ON CONFLICT(source_key) DO UPDATE SET last_error=NULL,last_success_at=excluded.last_success_at,notes=excluded.notes''',
@@ -290,7 +290,7 @@ def serve(database: Database, settings: Settings) -> None:
         except (OSError,ValueError) as error:
             import logging
             logging.warning('Alts Forever numeric export setup failed: %s',error)
-            with database.transaction() as c:
+            with database.write_transaction() as c:
                 c.execute('''INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
                     VALUES ('local-alts-forever-export','Alts numeric export setup','local_configuration',1,?)
                     ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error''',(str(error),))

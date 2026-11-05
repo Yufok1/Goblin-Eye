@@ -88,6 +88,51 @@ class ItemPropertyTests(unittest.TestCase):
         self.assertNotIn('shadow_resistance',stats)
         self.assertEqual(stats['stamina'],14)
 
+    def test_literal_name_corrections_apply_in_source_order_to_all_variants(self):
+        original = (self.addon/'ItemCatalogData.lua').read_text()
+        original = original.replace('6903 4', '\n \t\n6903 4')
+        self.write('ItemCatalogData.lua', original + '\n-- Authored name fixes\n'
+                   'ns.CAT_NAMES[7001]="Earlier name"\n'
+                   'ns.CAT_NAMES[7001]="Corrected Wand\\tLocalized name\\t3"\n'
+                   'ns.CAT_NAMES[6903]="Corrected Pants"\n')
+        self.adapter.import_file(self.db, self.addon)
+        service = ResearchService(self.db, Settings())
+        self.assertEqual(service.item(7001)['name'], 'Corrected Wand')
+        variants = service.item(7001)['item_properties']['variants']
+        self.assertEqual(variants['catalog']['name'], 'Corrected Wand')
+        self.assertEqual(variants['gear']['name'], 'Corrected Wand')
+        self.assertEqual(service.item(6903)['name'], 'Corrected Pants')
+        self.assertEqual(variants['tooltip']['evidence_basis'], 'classic_fallback')
+
+    def test_invalid_name_corrections_preserve_last_valid_catalog(self):
+        original = (self.addon/'ItemCatalogData.lua').read_text()
+        self.adapter.import_file(self.db, self.addon)
+        bad_tails = ('ns.CAT_NAMES[7001]=os.execute("no")',
+                     'ns.CAT_NAMES[7001]="Name" .. "expression"',
+                     'ns.CAT_NAMES[7001]=ns.CAT_NAMES[6903]',
+                     'ns.CAT_NAMES[true]="Name"', 'ns.CAT_NAMES[0]="Name"',
+                     'ns.CAT_NAMES[-1]="Name"', 'ns.CAT_NAMES[1.5]="Name"',
+                     'ns.CAT_NAMES["7001"]="Name"', 'ns.CAT_NAMES[7001]={}',
+                     'ns.OTHER[7001]="Name"')
+        for tail in bad_tails:
+            with self.subTest(tail=tail):
+                self.write('ItemCatalogData.lua', original + '\n' + tail)
+                with self.assertRaises(ValueError):
+                    self.adapter.import_file(self.db, self.addon)
+                self.assertEqual(ResearchService(self.db, Settings()).item(7001)['name'], 'Fixture Wand')
+        with self.db.transaction() as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM research_datasets').fetchone()[0], 1)
+
+    def test_mixed_gear_builds_do_not_become_a_single_per_item_build(self):
+        original = (self.addon/'GearData.lua').read_text()
+        self.write('GearData.lua', '-- Base data; build 70291 and documented dungeon updates applied.\n' + original)
+        self.adapter.import_file(self.db, self.addon)
+        variants = ResearchService(self.db, Settings()).item(6903)['item_properties']['variants']
+        self.assertIsNone(variants['gear']['game_build'])
+        self.assertIsNone(variants['gear']['catalog_build'])
+        self.assertEqual(variants['gear']['source_builds'], ['1.60.1.70205', '70291'])
+        self.assertEqual(variants['tooltip']['game_build'], '1.60.1.70170')
+
     def test_new_catalog_is_collected_by_existing_foreverguide_watcher(self):
         watcher=ForeverGuideWatcher(self.db,(str(self.addon),))
         with patch('goblin_eye.ingestion.discovery.discover_addon_paths',return_value=[self.addon]), \

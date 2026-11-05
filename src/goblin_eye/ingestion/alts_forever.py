@@ -138,7 +138,7 @@ class AltsForeverAdapter:
         # Full names are unique only in the addon's account/region context. Never merge accounts by name.
         namespace = hashlib.sha256(str(path.resolve()).casefold().encode()).hexdigest()[:24]
         imported = records = 0
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?,'Alts Forever character observations','local_character_observation',?,1,?,?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
@@ -208,7 +208,7 @@ class AltsForeverWatcher:
                 self._signatures[str(path)] = signature
             except Exception as exc:
                 logging.exception("Alts Forever saved-file import failed: %s", path)
-                with self.database.transaction() as connection:
+                with self.database.write_transaction() as connection:
                     connection.execute("""INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
                         VALUES (?,'Alts Forever character observations','local_character_observation',1,?)
                         ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""", (SOURCE_KEY,str(exc)))

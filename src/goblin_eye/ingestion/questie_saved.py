@@ -45,7 +45,7 @@ class QuestieSavedAdapter:
         # Match Alts' exact account/file namespace, never a partial character name.
         namespace=hashlib.sha256(str(path.with_name('AltsForever.lua')).casefold().encode()).hexdigest()[:24]
         now=datetime.now(timezone.utc).isoformat()
-        with database.transaction() as c:
+        with database.write_transaction() as c:
             c.execute('''INSERT INTO sources(source_key,name,source_type,trust_rank,last_success_at)
                 VALUES (?,'Questie saved quest completion','local_character_observation',1,?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL''',(SOURCE_KEY,now))
@@ -69,7 +69,7 @@ class QuestieSavedWatcher(AltsForeverWatcher):
                 self._signatures[str(path)]=signature
             except Exception as error:
                 logging.exception('Questie saved import failed: %s',path)
-                with self.database.transaction() as c:
+                with self.database.write_transaction() as c:
                     c.execute('''INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
                         VALUES (?,'Questie saved quest completion','local_character_observation',1,?)
                         ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error''',(SOURCE_KEY,str(error)))

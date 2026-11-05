@@ -647,6 +647,7 @@ function runJob(job) {
   const system = P.systemPrompt(ctx, primer());
   const systemShort = P.systemPrompt(ctx, '');
   const promptFile = path.join(TMP_DIR, `prompt-${job.id}-${Date.now().toString(36)}.txt`);
+  const diagnosticFile = agentId === 'agy' ? promptFile + '.agy.log' : null;
   const input = agent.input({ prompt: job.text, system, systemShort, resume, cfg: acfg });
   if (input.promptFile !== undefined) {
     try { fs.mkdirSync(TMP_DIR, { recursive: true }); fs.writeFileSync(promptFile, input.promptFile); }
@@ -655,6 +656,7 @@ function runJob(job) {
   let args,env;
   try {
     args = [...cmd.args, ...agent.args({cfg: acfg, resume, cwd, system, systemShort, promptFile,prompt: job.text, timeoutMs: cfg.timeoutMs})];
+    if (diagnosticFile) { fs.mkdirSync(TMP_DIR, {recursive:true}); args.push('--log-file', diagnosticFile); }
     env = agent.env({ ...process.env }, acfg);
   } catch(e) {finish(job,'error',`${agent.name} launch configuration failed: ${e.message}`);return;}
   // Where this run's tools append map commands (docs/MAP.md); any agent can use it.
@@ -753,20 +755,34 @@ function runJob(job) {
     clearInterval(keepalive);
     if (input.promptFile !== undefined) { try { fs.unlinkSync(promptFile); } catch {} }
   };
+  const readDiagnostics = () => {
+    if (!diagnosticFile) return '';
+    let fd;
+    try {
+      fd=fs.openSync(diagnosticFile,'r');
+      const size=fs.fstatSync(fd).size, bytes=Buffer.alloc(Math.min(size,262144));
+      fs.readSync(fd,bytes,0,bytes.length,Math.max(0,size-bytes.length));
+      return bytes.toString('utf8');
+    } catch { return ''; }
+    finally { if(fd!==undefined)fs.closeSync(fd);try{fs.unlinkSync(diagnosticFile);}catch{} }
+  };
 
   child.on('error', (err) => {
     cleanup();
+    readDiagnostics();
     if (job.cancelled) { finish(job, 'stopped', 'Stopped by you. Send a new message when ready.'); return; }
     finish(job, 'error', `Could not start ${agent.name} (${cmd.file}): ${err.message}\nSet agents.${agentId}.path in config.json.`);
   });
 
   child.on('close', (code) => {
     cleanup();
+    const diagnostics = readDiagnostics();
     if (job.cancelled) { finish(job, 'stopped', 'Stopped by you. Send a new message when ready.'); return; }
     if (job.finished) return;
-    if (agent.stream === 'text') {
+    if (buffer.trim()) { handleLine(buffer.trim()); buffer = ''; }
+    if (typeof parser.finish === 'function') {
       try {
-        const r = parser.finish({ stdout: stdoutText, stderr, code });
+        const r = parser.finish({ stdout: stdoutText, stderr, code, diagnostics });
         if (r && r.session) sessionId = r.session;
         if (r && r.done) result = r.done;
         if (r && Array.isArray(r.notes)) notes.push(...r.notes);
@@ -963,6 +979,9 @@ if (inject !== null) {
   if (once) {
     if (running.size === 0 && !voiceControlPending) { console.log('nothing pending'); process.exit(0); }
   } else {
+    // Warm every catalog without waiting for a pixel-strip settings request.
+    void catalog.refreshBackground();
+    setInterval(()=>{void catalog.refreshBackground();},10000);
     setInterval(pollSavedVariables, cfg.pollMs || 750);
     presenceBeat();
     setInterval(presenceBeat, cfg.presenceIntervalMs || 30000);

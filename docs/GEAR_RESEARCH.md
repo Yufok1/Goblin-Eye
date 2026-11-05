@@ -14,6 +14,10 @@ Forever interface and scanner contracts first. Original files are backed up
 under `data/addon-backups`. Setup errors appear in source health. No additional
 addon, external catalog, or model download is required.
 
+Reviewed Alts releases are 0.10.0, 0.13.0, 0.16.0 and live 1.0.1. Setup also checks the
+saved schema, scanner signatures and both manifests before writing files;
+an unknown release or a partial update is rejected until reviewed.
+
 The changed manifest is discovered on the next normal WoW launch. Equipped
 and bag items are captured automatically during Alts' normal scans; hovering
 each item, opening its tooltip, or issuing a manual rescan is not required.

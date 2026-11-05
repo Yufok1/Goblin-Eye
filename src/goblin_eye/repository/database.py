@@ -3,9 +3,32 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+import os
 import sqlite3
+import threading
 import time
 from typing import Iterator
+from weakref import WeakValueDictionary
+
+
+class _WriteGate:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.owner = None
+
+
+_WRITE_GATES = WeakValueDictionary()
+_GATES_LOCK = threading.Lock()
+
+
+def _write_gate(path: Path):
+    key = os.path.normcase(str(path.resolve()))
+    with _GATES_LOCK:
+        gate = _WRITE_GATES.get(key)
+        if gate is None:
+            gate = _WriteGate()
+            _WRITE_GATES[key] = gate
+        return gate
 
 
 class Database:
@@ -48,6 +71,30 @@ class Database:
         finally:
             connection.close()
 
+    @contextmanager
+    def write_transaction(self, *, begin: bool = True) -> Iterator[sqlite3.Connection]:
+        """Queue writers per database file without holding up WAL readers.
+
+        Wait before connecting, so a large import cannot exhaust another writer's
+        SQLite busy timeout in this process. Parse/download outside this scope.
+        Maintenance can manage its own transaction boundaries with begin=False.
+        """
+        if self.read_only:
+            raise ValueError('Read-only connections cannot start a write transaction')
+        gate = _write_gate(self.path)
+        owner = threading.get_ident()
+        if gate.owner == owner:
+            raise RuntimeError('Nested writes must reuse the active database connection')
+        with gate.lock:
+            gate.owner = owner
+            try:
+                with self.transaction() as connection:
+                    if begin:
+                        connection.execute('BEGIN IMMEDIATE')
+                    yield connection
+            finally:
+                gate.owner = None
+
     def migrate(self, migrations_dir: str | Path) -> None:
         directory = Path(migrations_dir)
         if self.read_only:
@@ -55,7 +102,7 @@ class Database:
         if not directory.is_dir():
             raise ValueError('Migrations unavailable: run from a supported source checkout')
         # execute() preserves the explicit transaction; executescript() commits it.
-        with self.transaction() as connection:
+        with self.write_transaction(begin=False) as connection:
             connection.execute(
                 "CREATE TABLE IF NOT EXISTS schema_migrations "
                 "(version TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"

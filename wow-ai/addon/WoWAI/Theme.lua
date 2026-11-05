@@ -6,6 +6,11 @@ AI.GoblinThemeLoaded = true
 local EYE = "Interface\\AddOns\\WoWAI\\Media\\GoblinEye.tga"
 local BG = { bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Tooltips\\UI-Tooltip-Border", tile=true, tileSize=16, edgeSize=12, insets={left=3,right=3,top=3,bottom=3} }
 local currentUI
+function AI.EyeGaze(dx,dy)
+ local distance=math.sqrt(dx*1.0*dx+dy*1.0*dy)
+ local divisor=math.max(100,distance)
+ return dx/divisor*0.035,dy/divisor*0.026
+end
 local tones = {
  neutral={bg={0.09,0.065,0.13,0.98},edge={0.43,0.30,0.57,1},text={0.88,0.83,0.95}},
  fel={bg={0.10,0.20,0.09,1},edge={0.48,0.69,0.24,1},text={0.79,1,0.49}},
@@ -124,6 +129,25 @@ function AI.ApplyGoblinTheme(frame,ui)
  local mini=ui.mini;mini:SetSize(76,76);mini:SetBackdropColor(0,0,0,0);mini:SetBackdropBorderColor(0,0,0,0)
  ui.eyeGlow=Texture(mini,"BACKGROUND",EYE,74,74,"CENTER",mini,"CENTER",0,0,0.14);ui.eyeGlow:SetBlendMode("ADD")
  ui.eyeIcon=Texture(mini,"ARTWORK",EYE,66,66,"CENTER",mini,"CENTER",0,0)
+ -- Fixed circular aperture samples the original iris. Only its gaze moves;
+ -- the frame, clickable area and saved screen position never follow the mouse.
+ local iris=Texture(mini,"OVERLAY",EYE,31.68,31.68,"CENTER",mini,"CENTER",0,-1.8)
+ iris:SetTexCoord(0.26,0.74,0.287,0.767)
+ local maskOK=pcall(function()
+  local mask=mini:CreateMaskTexture(nil,"ARTWORK")
+  mask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE")
+  mask:SetAllPoints(iris);iris:AddMaskTexture(mask)
+ end)
+ if not maskOK then iris:Hide() end
+ local elapsed=0
+ mini:HookScript("OnUpdate",function(self,dt)
+  elapsed=elapsed+dt;if elapsed<0.033 then return end;elapsed=0
+  if not maskOK or not GetCursorPosition then return end
+  local x,y=GetCursorPosition();local cx,cy=self:GetCenter();local scale=self:GetEffectiveScale()
+  if not x or not cx or not scale or scale<=0 then return end
+  local u,v=AI.EyeGaze(x/scale-cx,y/scale-cy)
+  iris:SetTexCoord(0.26-u,0.74-u,0.287+v,0.767+v)
+ end)
  ui.miniLabel:Hide()
  local miniDot=ui.miniDot:GetParent();miniDot:ClearAllPoints();miniDot:SetSize(12,12);miniDot:SetPoint("BOTTOMRIGHT",mini,"BOTTOMRIGHT",-8,7)
  local badge=CreateFrame("Frame",nil,mini,"BackdropTemplate");badge:SetSize(24,20);badge:SetPoint("TOPLEFT",mini,"TOPLEFT",0,-4)

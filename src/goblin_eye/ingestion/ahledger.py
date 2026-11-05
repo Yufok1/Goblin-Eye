@@ -107,7 +107,7 @@ class AHLedgerPublicApiAdapter:
             if item.get("id"):
                 item_records.append((item, download.url))
 
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute(
                 """INSERT INTO sources(source_key, name, source_type, url, trust_rank, enabled, notes,
                 last_success_at, last_error) VALUES ('ahledger', 'AHledger Forever community prices', 'community_api',
@@ -219,7 +219,7 @@ class AHLedgerWatcher:
                 self.adapter.sync(self.database)
             except Exception as exc:
                 now = datetime.now(timezone.utc).isoformat()
-                with self.database.transaction() as connection:
+                with self.database.write_transaction() as connection:
                     connection.execute(
                         """INSERT INTO sources(source_key, name, source_type, url, trust_rank, enabled,
                         notes, last_success_at, last_error) VALUES ('ahledger', 'AHledger Forever community prices', 'community_api',

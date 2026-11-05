@@ -808,7 +808,7 @@ local function TryLoadSlot(why)
 		if type(data.agents) == "table" and #data.agents > 0 then run.bridgeAgents = data.agents end
 	end
 	local matched = ApplyReplies(type(data) == "table" and data.replies or nil)
-	if type(data) == "table" and type(data.model_catalogs) == "table" then run.catalogs = data.model_catalogs; if WoWAI.RefreshChatSettings then WoWAI.RefreshChatSettings() end end
+	if type(data) == "table" and type(data.model_catalogs) == "table" then WoWAI.ReceiveModelCatalogs(data.model_catalogs) end
 	if type(data) == "table" and type(data.speech) == "table" then run.speech = data.speech; if WoWAI.RefreshVoiceSettings then WoWAI.RefreshVoiceSettings() end end
 	if type(data) == "table" then
 		for _, a in ipairs(data.speech_acks or {}) do
@@ -840,6 +840,7 @@ local function Tick()
 	WoWAI.UpdateDot()
 	WoWAI.CheckConnection()
 	if db.settings.mode ~= "pixel" then return end
+	if WoWAI.PollSettingsCatalogs then WoWAI.PollSettingsCatalogs() end
 	if run.voicePollAt and now >= run.voicePollAt then run.voicePollAt = nil; TryLoadSlot("voice") end
 	-- Speech finishes after its Play control has already been acknowledged.
 	-- Continue bounded polling while it is busy so late phase/completion updates
@@ -938,7 +939,7 @@ local function ProcessInbox()
 	if type(inbox.agent) == "string" and inbox.agent ~= "" then run.bridgeAgent = inbox.agent end
 	if type(inbox.agents) == "table" and #inbox.agents > 0 then run.bridgeAgents = inbox.agents end
 	if type(inbox.speech) == "table" then run.speech = inbox.speech end
-	if type(inbox.model_catalogs) == "table" then run.catalogs = inbox.model_catalogs end
+	if type(inbox.model_catalogs) == "table" then WoWAI.ReceiveModelCatalogs(inbox.model_catalogs) end
 	ApplyControlAcks(inbox)
 	ApplyReplies(inbox.replies)
 	if inbox.restore then ImportRestore(inbox.restore) end
@@ -1263,24 +1264,57 @@ end
 function WoWAI.SpeechInfo()
 	return run.speech or { enabled = false, mode = "summary", volume = 70, rate = 0, voice = "", error = "Connect to refresh voice status." }
 end
+function WoWAI.ReceiveModelCatalogs(catalogs)
+ db.modelCatalogs = db.modelCatalogs or {}
+ for _, v in ipairs(catalogs or {}) do
+  -- Never mistake a legacy ten-row response for a complete catalog.
+  if v.complete and type(v.agent) == "string" then
+   local old = db.modelCatalogs[v.agent]
+   if v.status == "ready" or not old or old.status ~= "ready" then db.modelCatalogs[v.agent] = v
+   elseif v.status == "error" then old.error = v.error end
+  end
+ end
+ if WoWAI.RefreshChatSettings then WoWAI.RefreshChatSettings() end
+end
+function WoWAI.InsertPromptDraft(text)
+ local c=ActiveChat();if not c or type(text)~="string" or text=="" then return end
+ local previous=ui.input and ui.input:GetText() or c.draft or ""
+ local draft=previous..(previous~="" and "\n\n" or "")..text
+ WoWAI.Toggle(true)
+ c.draft=nil;ui.input:SetText(draft);ui.input:SetFocus()
+end
 function WoWAI.ChatSettingsContext(id)
  local c = id and FindChat(id) or ActiveChat()
+ local agent = ChatAgent(c)
+ local source = db and db.modelCatalogs and db.modelCatalogs[agent]
  local view
- for _, v in ipairs(run.catalogs or {}) do if c and v.chat == c.id and v.agent == ChatAgent(c) then view = v end end
- return c, db and db.settings, view, run.bridgeAgents or {}, ChatAgent(c), run.bridgeAgent
+ if source then
+  view = {}; for k,v in pairs(source) do view[k] = v end
+  local filter = run.modelFilters and c and run.modelFilters[c.id] or {}
+  local query = string.lower(filter.query or "")
+  local items = {}
+  for _, m in ipairs(source.items or {}) do
+   if c and m.id == (c.model or source.default_model) then view.selected = m end
+   if (not filter.free or m.free) and (query == "" or string.find(string.lower(m.id .. " " .. m.name .. " " .. (m.description or "")), query, 1, true)) then items[#items+1] = m end
+  end
+  table.sort(items,function(a,b) if a.free ~= b.free then return a.free == true end; if a.name == b.name then return a.id < b.id end; return a.name < b.name end)
+  view.total = #items; view.pages = math.max(1,math.ceil(#items/10)); view.page = math.min(view.pages,filter.page or 1)
+  view.items = {}; for i=(view.page-1)*10+1,math.min(view.page*10,#items) do view.items[#view.items+1] = items[i] end
+ end
+ return c, db and db.settings, view, run.bridgeAgents or {}, agent, run.bridgeAgent
 end
 function WoWAI.RequestModels(id, query, page, refresh, free)
  local c = id and FindChat(id) or ActiveChat(); if not c then return end
- if db.settings.mode == "reload" and AnyPending() then print("WoWAI: wait for the pending reply before refreshing models in reload mode."); return end
- local payload = '{"agent":' .. JSONString(ChatAgent(c)) .. ',"query":' .. JSONString(tostring(query or ""):sub(1,100)) .. ',"selected":' .. JSONString(c.model) .. ',"page":' .. tostring(math.max(1, math.floor(tonumber(page) or 1))) .. ',"refresh":' .. (refresh and 'true' or 'false') .. ',"free":' .. (free and 'true' or 'false') .. '}'
- db.lastSeq = db.lastSeq + 1
- if db.settings.mode == "reload" then
-  db.outbox = {id=db.lastSeq, session=db.session, chat=c.id, text=ToHex(payload), cwd=ToHex(c.cwd or ""), models=true}; SafeReload()
- else
-  run.outbound[db.lastSeq] = {chat=c.id,cwd=c.cwd,flags="models",name=c.name,text=payload,sentAt=GetTime(),models=true}
-  run.modelsPollAt = GetTime()+28; RefreshStrip()
- end
- return db.lastSeq
+ run.modelFilters = run.modelFilters or {}
+ run.modelFilters[c.id] = {query=tostring(query or ""):sub(1,100),page=math.max(1,math.floor(tonumber(page) or 1)),free=free==true}
+ -- Reading an already-written inbound slot never emits a strip record.
+ if refresh then WoWAI.SyncModelCatalogs() end
+end
+function WoWAI.SyncModelCatalogs()
+ if db.settings.mode ~= "pixel" then return end
+ if GetTime() < (run.nextCatalogRead or 0) then return end
+ run.nextCatalogRead = GetTime()+10
+ TryLoadSlot("catalogs")
 end
 function WoWAI.Voice(op, value, chatId)
 	local allowed = { on=true, off=true, stop=true, summary=true, full=true, volume=true, rate=true, name=true, character=true, status=true, listen=true, listenfull=true, preview=true }
@@ -2398,6 +2432,27 @@ local function MakeButton(parent, label, width, onClick)
 end
 
 local PANEL_W = 150
+function WoWAI.ApplySidebarLayout()
+ if not ui.panel or not ui.scroll or not ui.inputBg then return end
+ local hidden=db.settings.sidebarHidden==true
+ ui.panel:SetShown(not hidden)
+ if hidden and WoWAIChatMenu then WoWAIChatMenu:Hide() end
+ ui.sidebarToggle:ClearAllPoints()
+ ui.sidebarToggle:SetPoint("TOPLEFT",ui.frame,"TOPLEFT",hidden and 14 or 140,-68)
+ ui.sidebarToggle:SetText(hidden and ">" or "<")
+ ui.scroll:ClearAllPoints()
+ if hidden then ui.scroll:SetPoint("TOPLEFT",ui.frame,"TOPLEFT",44,-64)
+ else ui.scroll:SetPoint("TOPLEFT",ui.panel,"TOPRIGHT",8,0) end
+ ui.scroll:SetPoint("BOTTOMRIGHT",ui.frame,"BOTTOMRIGHT",-32,110)
+ ui.inputBg:ClearAllPoints()
+ if hidden then ui.inputBg:SetPoint("BOTTOMLEFT",ui.frame,"BOTTOMLEFT",14,50)
+ else ui.inputBg:SetPoint("BOTTOMLEFT",ui.panel,"BOTTOMRIGHT",8,0) end
+ ui.inputBg:SetPoint("BOTTOMRIGHT",ui.frame,"BOTTOMRIGHT",-104,50)
+end
+function WoWAI.ToggleSidebar()
+ db.settings.sidebarHidden=not db.settings.sidebarHidden
+ WoWAI.ApplySidebarLayout();WoWAI.Render()
+end
 
 local function BuildUI()
 	if ui.frame then return end
@@ -2529,8 +2584,15 @@ local function BuildUI()
 	panel:SetBackdropColor(0, 0, 0, 0.4)
 	panel:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
 
-	local newBtn = MakeButton(panel, "+ New chat", PANEL_W - 16, function() WoWAI.NewChat() end)
-	newBtn:SetPoint("TOP", panel, "TOP", 0, -8)
+	local newBtn = MakeButton(panel, "+ New chat", PANEL_W - 42, function() WoWAI.NewChat() end)
+	newBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -8)
+	local sidebarToggle=CreateFrame("Button","WoWAISidebarToggle",f,"UIPanelButtonTemplate")
+	sidebarToggle:SetSize(20,24);sidebarToggle:SetScript("OnClick",WoWAI.ToggleSidebar)
+	sidebarToggle:SetScript("OnEnter",function(self)
+		GameTooltip:SetOwner(self,"ANCHOR_RIGHT");GameTooltip:SetText(db.settings.sidebarHidden and "Show chat list" or "Hide chat list");GameTooltip:Show()
+	end)
+	sidebarToggle:SetScript("OnLeave",function()GameTooltip:Hide()end)
+	ui.sidebarToggle=sidebarToggle
 
 	-- Per-chat menu: Rename, Folder and Agent, opened by right-clicking a chat
 	-- row. A plain frame of our own rather than a Blizzard dropdown, so it looks
@@ -2775,6 +2837,8 @@ local function BuildUI()
 	ui.resend = resend
 	local settingsButton = MakeButton(f, "Settings", 80, function() if WoWAI.ShowChatSettings then WoWAI.ShowChatSettings() end end)
 	settingsButton:SetPoint("LEFT", resend, "RIGHT", 6, 0)
+	local promptsButton = MakeButton(f, "Prompts", 80, function() if WoWAI.ShowPromptLibrary then WoWAI.ShowPromptLibrary() end end)
+	promptsButton:SetPoint("LEFT", settingsButton, "RIGHT", 6, 0)
 
 	-- A named, always-present button so a keybinding can click it (see /wow-ai bind).
 	local hotkey = CreateFrame("Button", "WoWAIRefreshButton", UIParent)
@@ -2888,6 +2952,7 @@ local function BuildUI()
 	end)
 	mclose:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	if WoWAI.ApplyGoblinTheme then WoWAI.ApplyGoblinTheme(f, ui) end
+	WoWAI.ApplySidebarLayout()
 end
 
 function WoWAI.Toggle(show)

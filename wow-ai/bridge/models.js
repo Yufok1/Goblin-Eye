@@ -29,7 +29,7 @@ function parseModels(id,text){
  if(id==='agy')return text.split(/\r?\n/).map(line=>{const [value,name]=line.split('\t');return name?row({id:value,name}):null;}).filter(Boolean);
  return [];
 }
-function discover(id,cfg,{refresh=false,spawnFn=spawn,cwd=process.cwd(),timeout=25000}={}){
+function discover(id,cfg,{refresh=false,spawnFn=spawn,cwd=process.cwd(),timeout=id==='kilo'?60000:25000}={}){
  const cmd=A.resolveCommand(id,cfg);
  if(!cmd.found)return Promise.reject(Error(`${A.displayName(id)} is not installed.`));
  if(!['kilo','agy','codex','claude'].includes(id))return Promise.reject(Error('This CLI has no supported model-discovery interface. Use its configured model.'));
@@ -38,7 +38,7 @@ function discover(id,cfg,{refresh=false,spawnFn=spawn,cwd=process.cwd(),timeout=
   const env={...process.env};delete env.CLAUDECODE;
   const child=spawnFn(cmd.file,[...cmd.args,...args],{cwd,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
   let text='',buffer='',size=0,settled=false,rows=[],cursor=null,pages=0;
-  const timer=setTimeout(()=>done(Error('Model discovery timed out. Refresh to retry.')),timeout);
+  const timer=setTimeout(()=>done(Error('Model discovery timed out. The bridge will retry automatically.')),timeout);
   function done(err,result){if(settled)return;settled=true;clearTimeout(timer);child.kill();err?reject(err):resolve(result);}
   function send(ev){child.stdin.write(JSON.stringify(ev)+'\n');}
   child.on('error',()=>done(Error('Could not start model discovery.')));
@@ -78,7 +78,7 @@ class ModelCatalog {
   this.views.set(chat,{...base,status:'loading',items:[]});this.onChange();
   try{
    let entry=this.cache.get(id);
-   if(!entry || req.refresh===true || this.now()-entry.time>TTL){
+   if(!entry || req.refresh===true || this.now()-entry.time>=TTL){
     if(!this.pending.has(id))this.pending.set(id,this.loader(id,acfg,{refresh:req.refresh===true,cwd:this.cwd}).then(items=>{const unique=[...new Map(items.filter(Boolean).map(m=>[m.id,m])).values()];if(!unique.length)throw Error('No models were returned.');const result={time:this.now(),items:unique};this.cache.set(id,result);return result;}).finally(()=>this.pending.delete(id)));
     entry=await this.pending.get(id);
    }
@@ -90,7 +90,32 @@ class ModelCatalog {
   }catch(e){if(this.sequence.get(chat)!==seq)return;this.views.set(chat,{...base,status:'error',error:clean(e.message),items:[]});}
   this.onChange();
  }
- wire(){return [...this.views.values()].slice(-16);}
+ // Publish complete catalogs independently of chat/menu requests. Older addons
+ // can still request their paginated views through the legacy control path.
+ async refreshBackground(){
+  if(this.backgroundRunning)return;
+  this.backgroundRunning=true;
+  this.nextBackgroundAttempt ||= new Map();
+  const agents=A.agentIds().filter(id=>this.now()>=(this.nextBackgroundAttempt.get(id)||0));
+  agents.sort((a,b)=>Number(b===this.defaultAgent)-Number(a===this.defaultAgent));
+  const worker=async()=>{
+   while(agents.length){
+    const agent=agents.shift(),chat='@catalog/'+agent;
+    await this.request({chat,id:0,text:JSON.stringify({agent})});
+    const retry=this.views.get(chat)?.status==='error' && ['kilo','codex','claude','agy'].includes(agent);
+    this.nextBackgroundAttempt.set(agent,this.now()+(retry?30000:TTL));
+   }
+  };
+  try{await Promise.all([worker(),worker()]);}
+  finally{this.backgroundRunning=false;}
+ }
+ wire(){
+  return [...this.views.values()].filter(v=>!v.chat.startsWith('@catalog/')).slice(-16).concat(
+   [...this.views.values()].filter(v=>v.chat.startsWith('@catalog/')).map(v=>{
+    const entry=this.cache.get(v.agent);
+    return {...v,chat:'',complete:true,...(entry?{status:'ready',fetched_at:Math.floor(entry.time/1000),items:entry.items,total:entry.items.length,catalog_total:entry.items.length,page:1,pages:1}: {})};
+   }));
+ }
  close(){this.views.clear();}
 }
 function parseOptions(raw){

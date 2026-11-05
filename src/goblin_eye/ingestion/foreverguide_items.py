@@ -53,6 +53,31 @@ def stat_values(value, labels):
     return raw, {labels[k]: v for k, v in raw.items() if k in labels and not isinstance(v,list)}
 
 
+def catalog_names(reader):
+    """Read the names table and its inspected literal-only corrections in order."""
+    reader.expect('ns.CAT_NAMES')
+    reader.expect('=')
+    names = reader.read()
+    if not isinstance(names, dict) or any(type(i) is not int or i <= 0 or not isinstance(v, str)
+                                          for i, v in names.items()):
+        raise ValueError('Invalid item names catalog')
+    reader.skip()
+    while reader.position < len(reader.text):
+        reader.expect('ns.CAT_NAMES')
+        reader.expect('[')
+        item_id = reader.read()
+        reader.expect(']')
+        reader.expect('=')
+        value = reader.read()
+        if type(item_id) is not int or item_id <= 0 or not isinstance(value, str):
+            raise ValueError('Invalid item name correction')
+        # Lua applies these authored corrections after the table, in file order.
+        # Accept no functions, lookups, concatenation, or other assignments.
+        names[item_id] = value
+        reader.skip()
+    return names
+
+
 def packed_block(text, name):
     match = re.search(r"^ns\." + name + r"\s*=\s*\[\[", text, re.M)
     if not match:
@@ -62,32 +87,38 @@ def packed_block(text, name):
         raise ValueError("Unexpected content after item catalog")
     reader = LuaLiteralReader(text, end+2)
     reader.skip()
-    if name == 'CAT_DATA':
-        reader.expect('ns.CAT_NAMES')
-        reader.expect('=')
-        reader.read()
-        reader.skip()
+    names = catalog_names(reader) if name == 'CAT_DATA' else {}
     if reader.position != len(text):
         raise ValueError("Unexpected content after item catalog")
-    return text[match.end():end].strip().splitlines()
+    return text[match.end():end].strip().splitlines(), names
+
+
+def catalog_builds(text):
+    header = '\n'.join(line for line in text[:800].splitlines() if line.startswith('--'))
+    builds = list(dict.fromkeys(re.findall(r'\b1\.60\.1\.\d+\b', header)
+                               + re.findall(r'\bbuild (\d{5,})\b', header)))
+    numbers = {build.rsplit('.', 1)[-1] for build in builds}
+    # A file mixing an older simulator snapshot and later dungeon changes does
+    # not identify which build supplied each row. Retain both source labels.
+    return (builds[0] if len(numbers) == 1 else None), builds
 
 
 def parse_files(files):
     records = []
-    catalog_text = files['ItemCatalogData.lua'].decode('utf-8-sig')
-    names_match = re.search(r'^ns\.CAT_NAMES\s*=\s*',catalog_text,re.M)
-    names = LuaLiteralReader(catalog_text,names_match.end()).read() if names_match else {}
-    if not isinstance(names,dict) or any(type(i) is not int or not isinstance(v,str) for i,v in names.items()):
-        raise ValueError('Invalid item names catalog')
+    names = {}
     for filename, table, width in (("ItemCatalogData.lua", "CAT_DATA", 8), ("GearData.lua", "GEAR_DATA", 8)):
         text = files[filename].decode("utf-8-sig")
         required = "ItemSparse/Item" if table == "CAT_DATA" else "WoWSims"
         if required not in text[:800]:
             raise ValueError("Item catalog provenance changed")
-        build = re.search(r"1\.60\.1\.\d+", text[:800])
+        build, source_builds = catalog_builds(text)
         seen = set()
-        for line in packed_block(text, table):
+        lines, corrections = packed_block(text, table)
+        names.update(corrections)
+        for line in lines:
             f = line.split()
+            if not f:
+                continue
             if len(f) != width:
                 raise ValueError("Unsupported item catalog row width")
             nums = [int(v) for v in f[:8 if table == "CAT_DATA" else 7]]
@@ -109,7 +140,8 @@ def parse_files(files):
                     flags=flags, class_mask=classes, stats_raw=raw, stats=normalized,
                     evidence_basis="mixed_forever_references", stats_scope="base_item")
                 variant = "gear"
-            data["catalog_build"] = build[0] if build else None
+            data["catalog_build"] = build
+            data["source_builds"] = source_builds
             data["game_build"] = None if data['evidence_basis'] == 'classic_fallback' else data['catalog_build']
             data['name'] = names.get(item_id,'').split('\t')[0] or None
             records.append((item_id, variant, data, filename + "#" + str(item_id)))
@@ -171,15 +203,15 @@ class ForeverGuideItemAdapter:
         hashes = {name: hashlib.sha256(body).hexdigest() for name, body in files.items()}
         # A parser revision must reimport unchanged source bytes. Keep source hashes
         # in the manifest; dataset identity also covers interpretation version.
-        digest = hashlib.sha256(json.dumps({'files':hashes,'parser':2}, sort_keys=True).encode()).hexdigest()
+        digest = hashlib.sha256(json.dumps({'files':hashes,'parser':3}, sort_keys=True).encode()).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
-        with database.transaction() as conn:
+        with database.write_transaction() as conn:
             existing = conn.execute("SELECT d.id FROM research_datasets d JOIN sources s ON s.id=d.source_id WHERE s.source_key=? AND d.sha256=? AND d.active=1", (SOURCE_KEY,digest)).fetchone()
             if existing:
                 conn.execute("UPDATE sources SET last_success_at=?,last_error=NULL WHERE source_key=?", (now,SOURCE_KEY))
                 return ImportResult(self.capability.key,SOURCE_KEY,0,0,("Catalog unchanged.",))
         records = parse_files(files)  # All validation before mutation.
-        with database.transaction() as conn:
+        with database.write_transaction() as conn:
             conn.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?,?, 'bundled_item_database', ?,6,?,?) ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
                 (SOURCE_KEY,self.capability.display_name,SOURCE_URL,"Installed catalogs only; upstream builds and fallback labels retained.",now))

@@ -32,7 +32,7 @@ function atomic(file,data) {
 function json(file,data){atomic(file,JSON.stringify(data,null,2)+'\n');}
 function mcpConfigs(root) {
  const python=path.join(root,'python','python.exe');
- const args=['-m','goblin_eye','--config',path.join(root,'config.json'),'--database',path.join(root,'data','goblin-eye.db'),'mcp'];
+ const args=['-m','goblin_eye','--config',path.join(root,'config.json'),'mcp'];
  const env={PYTHONPATH:path.join(root,'src')};
  return {
   '.mcp.json':JSON.stringify({mcpServers:{goblin_eye:{command:python,args,env}}},null,2)+'\n',
@@ -42,7 +42,7 @@ function mcpConfigs(root) {
  };
 }
 function install(root,client,account,agent) {
- if(!isClient(client))throw Error('Select the client folder containing Wow*.exe and Interface (for example _classic_beta_).');
+ if(!isClient(client))throw Error('Select the client folder containing Wow*.exe and Interface (for example _forever_).');
  if(!accounts(client).includes(account))throw Error('Select an existing account folder. Log into WoW once if none exists.');
  if(!A.normalizeAgent(agent))throw Error('Unknown agent: '+agent);
  const bridge=path.join(root,'wow-ai','bridge'),configFile=path.join(bridge,'config.json');

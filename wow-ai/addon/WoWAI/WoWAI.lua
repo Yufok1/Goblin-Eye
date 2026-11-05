@@ -808,7 +808,7 @@ local function TryLoadSlot(why)
 		if type(data.agents) == "table" and #data.agents > 0 then run.bridgeAgents = data.agents end
 	end
 	local matched = ApplyReplies(type(data) == "table" and data.replies or nil)
-	if type(data) == "table" and type(data.model_catalogs) == "table" then run.catalogs = data.model_catalogs; if WoWAI.RefreshChatSettings then WoWAI.RefreshChatSettings() end end
+	if type(data) == "table" and type(data.model_catalogs) == "table" then WoWAI.ReceiveModelCatalogs(data.model_catalogs) end
 	if type(data) == "table" and type(data.speech) == "table" then run.speech = data.speech; if WoWAI.RefreshVoiceSettings then WoWAI.RefreshVoiceSettings() end end
 	if type(data) == "table" then
 		for _, a in ipairs(data.speech_acks or {}) do
@@ -840,6 +840,7 @@ local function Tick()
 	WoWAI.UpdateDot()
 	WoWAI.CheckConnection()
 	if db.settings.mode ~= "pixel" then return end
+	if WoWAI.PollSettingsCatalogs then WoWAI.PollSettingsCatalogs() end
 	if run.voicePollAt and now >= run.voicePollAt then run.voicePollAt = nil; TryLoadSlot("voice") end
 	-- Speech finishes after its Play control has already been acknowledged.
 	-- Continue bounded polling while it is busy so late phase/completion updates
@@ -938,7 +939,7 @@ local function ProcessInbox()
 	if type(inbox.agent) == "string" and inbox.agent ~= "" then run.bridgeAgent = inbox.agent end
 	if type(inbox.agents) == "table" and #inbox.agents > 0 then run.bridgeAgents = inbox.agents end
 	if type(inbox.speech) == "table" then run.speech = inbox.speech end
-	if type(inbox.model_catalogs) == "table" then run.catalogs = inbox.model_catalogs end
+	if type(inbox.model_catalogs) == "table" then WoWAI.ReceiveModelCatalogs(inbox.model_catalogs) end
 	ApplyControlAcks(inbox)
 	ApplyReplies(inbox.replies)
 	if inbox.restore then ImportRestore(inbox.restore) end
@@ -1263,24 +1264,57 @@ end
 function WoWAI.SpeechInfo()
 	return run.speech or { enabled = false, mode = "summary", volume = 70, rate = 0, voice = "", error = "Connect to refresh voice status." }
 end
+function WoWAI.ReceiveModelCatalogs(catalogs)
+ db.modelCatalogs = db.modelCatalogs or {}
+ for _, v in ipairs(catalogs or {}) do
+  -- Never mistake a legacy ten-row response for a complete catalog.
+  if v.complete and type(v.agent) == "string" then
+   local old = db.modelCatalogs[v.agent]
+   if v.status == "ready" or not old or old.status ~= "ready" then db.modelCatalogs[v.agent] = v
+   elseif v.status == "error" then old.error = v.error end
+  end
+ end
+ if WoWAI.RefreshChatSettings then WoWAI.RefreshChatSettings() end
+end
+function WoWAI.InsertPromptDraft(text)
+ local c=ActiveChat();if not c or type(text)~="string" or text=="" then return end
+ local previous=ui.input and ui.input:GetText() or c.draft or ""
+ local draft=previous..(previous~="" and "\n\n" or "")..text
+ WoWAI.Toggle(true)
+ c.draft=nil;ui.input:SetText(draft);ui.input:SetFocus()
+end
 function WoWAI.ChatSettingsContext(id)
  local c = id and FindChat(id) or ActiveChat()
+ local agent = ChatAgent(c)
+ local source = db and db.modelCatalogs and db.modelCatalogs[agent]
  local view
- for _, v in ipairs(run.catalogs or {}) do if c and v.chat == c.id and v.agent == ChatAgent(c) then view = v end end
- return c, db and db.settings, view, run.bridgeAgents or {}, ChatAgent(c), run.bridgeAgent
+ if source then
+  view = {}; for k,v in pairs(source) do view[k] = v end
+  local filter = run.modelFilters and c and run.modelFilters[c.id] or {}
+  local query = string.lower(filter.query or "")
+  local items = {}
+  for _, m in ipairs(source.items or {}) do
+   if c and m.id == (c.model or source.default_model) then view.selected = m end
+   if (not filter.free or m.free) and (query == "" or string.find(string.lower(m.id .. " " .. m.name .. " " .. (m.description or "")), query, 1, true)) then items[#items+1] = m end
+  end
+  table.sort(items,function(a,b) if a.free ~= b.free then return a.free == true end; if a.name == b.name then return a.id < b.id end; return a.name < b.name end)
+  view.total = #items; view.pages = math.max(1,math.ceil(#items/10)); view.page = math.min(view.pages,filter.page or 1)
+  view.items = {}; for i=(view.page-1)*10+1,math.min(view.page*10,#items) do view.items[#view.items+1] = items[i] end
+ end
+ return c, db and db.settings, view, run.bridgeAgents or {}, agent, run.bridgeAgent
 end
 function WoWAI.RequestModels(id, query, page, refresh, free)
  local c = id and FindChat(id) or ActiveChat(); if not c then return end
- if db.settings.mode == "reload" and AnyPending() then print("WoWAI: wait for the pending reply before refreshing models in reload mode."); return end
- local payload = '{"agent":' .. JSONString(ChatAgent(c)) .. ',"query":' .. JSONString(tostring(query or ""):sub(1,100)) .. ',"selected":' .. JSONString(c.model) .. ',"page":' .. tostring(math.max(1, math.floor(tonumber(page) or 1))) .. ',"refresh":' .. (refresh and 'true' or 'false') .. ',"free":' .. (free and 'true' or 'false') .. '}'
- db.lastSeq = db.lastSeq + 1
- if db.settings.mode == "reload" then
-  db.outbox = {id=db.lastSeq, session=db.session, chat=c.id, text=ToHex(payload), cwd=ToHex(c.cwd or ""), models=true}; SafeReload()
- else
-  run.outbound[db.lastSeq] = {chat=c.id,cwd=c.cwd,flags="models",name=c.name,text=payload,sentAt=GetTime(),models=true}
-  run.modelsPollAt = GetTime()+28; RefreshStrip()
- end
- return db.lastSeq
+ run.modelFilters = run.modelFilters or {}
+ run.modelFilters[c.id] = {query=tostring(query or ""):sub(1,100),page=math.max(1,math.floor(tonumber(page) or 1)),free=free==true}
+ -- Reading an already-written inbound slot never emits a strip record.
+ if refresh then WoWAI.SyncModelCatalogs() end
+end
+function WoWAI.SyncModelCatalogs()
+ if db.settings.mode ~= "pixel" then return end
+ if GetTime() < (run.nextCatalogRead or 0) then return end
+ run.nextCatalogRead = GetTime()+10
+ TryLoadSlot("catalogs")
 end
 function WoWAI.Voice(op, value, chatId)
 	local allowed = { on=true, off=true, stop=true, summary=true, full=true, volume=true, rate=true, name=true, character=true, status=true, listen=true, listenfull=true, preview=true }
@@ -2398,6 +2432,27 @@ local function MakeButton(parent, label, width, onClick)
 end
 
 local PANEL_W = 150
+function WoWAI.ApplySidebarLayout()
+ if not ui.panel or not ui.scroll or not ui.inputBg then return end
+ local hidden=db.settings.sidebarHidden==true
+ ui.panel:SetShown(not hidden)
+ if hidden and WoWAIChatMenu then WoWAIChatMenu:Hide() end
+ ui.sidebarToggle:ClearAllPoints()
+ ui.sidebarToggle:SetPoint("TOPLEFT",ui.frame,"TOPLEFT",hidden and 14 or 140,-68)
+ ui.sidebarToggle:SetText(hidden and ">" or "<")
+ ui.scroll:ClearAllPoints()
+ if hidden then ui.scroll:SetPoint("TOPLEFT",ui.frame,"TOPLEFT",44,-64)
+ else ui.scroll:SetPoint("TOPLEFT",ui.panel,"TOPRIGHT",8,0) end
+ ui.scroll:SetPoint("BOTTOMRIGHT",ui.frame,"BOTTOMRIGHT",-32,110)
+ ui.inputBg:ClearAllPoints()
+ if hidden then ui.inputBg:SetPoint("BOTTOMLEFT",ui.frame,"BOTTOMLEFT",14,50)
+ else ui.inputBg:SetPoint("BOTTOMLEFT",ui.panel,"BOTTOMRIGHT",8,0) end
+ ui.inputBg:SetPoint("BOTTOMRIGHT",ui.frame,"BOTTOMRIGHT",-104,50)
+end
+function WoWAI.ToggleSidebar()
+ db.settings.sidebarHidden=not db.settings.sidebarHidden
+ WoWAI.ApplySidebarLayout();WoWAI.Render()
+end
 
 local function BuildUI()
 	if ui.frame then return end
@@ -2529,8 +2584,15 @@ local function BuildUI()
 	panel:SetBackdropColor(0, 0, 0, 0.4)
 	panel:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
 
-	local newBtn = MakeButton(panel, "+ New chat", PANEL_W - 16, function() WoWAI.NewChat() end)
-	newBtn:SetPoint("TOP", panel, "TOP", 0, -8)
+	local newBtn = MakeButton(panel, "+ New chat", PANEL_W - 42, function() WoWAI.NewChat() end)
+	newBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -8)
+	local sidebarToggle=CreateFrame("Button","WoWAISidebarToggle",f,"UIPanelButtonTemplate")
+	sidebarToggle:SetSize(20,24);sidebarToggle:SetScript("OnClick",WoWAI.ToggleSidebar)
+	sidebarToggle:SetScript("OnEnter",function(self)
+		GameTooltip:SetOwner(self,"ANCHOR_RIGHT");GameTooltip:SetText(db.settings.sidebarHidden and "Show chat list" or "Hide chat list");GameTooltip:Show()
+	end)
+	sidebarToggle:SetScript("OnLeave",function()GameTooltip:Hide()end)
+	ui.sidebarToggle=sidebarToggle
 
 	-- Per-chat menu: Rename, Folder and Agent, opened by right-clicking a chat
 	-- row. A plain frame of our own rather than a Blizzard dropdown, so it looks
@@ -2775,6 +2837,8 @@ local function BuildUI()
 	ui.resend = resend
 	local settingsButton = MakeButton(f, "Settings", 80, function() if WoWAI.ShowChatSettings then WoWAI.ShowChatSettings() end end)
 	settingsButton:SetPoint("LEFT", resend, "RIGHT", 6, 0)
+	local promptsButton = MakeButton(f, "Prompts", 80, function() if WoWAI.ShowPromptLibrary then WoWAI.ShowPromptLibrary() end end)
+	promptsButton:SetPoint("LEFT", settingsButton, "RIGHT", 6, 0)
 
 	-- A named, always-present button so a keybinding can click it (see /wow-ai bind).
 	local hotkey = CreateFrame("Button", "WoWAIRefreshButton", UIParent)
@@ -2888,6 +2952,7 @@ local function BuildUI()
 	end)
 	mclose:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	if WoWAI.ApplyGoblinTheme then WoWAI.ApplyGoblinTheme(f, ui) end
+	WoWAI.ApplySidebarLayout()
 end
 
 function WoWAI.Toggle(show)
@@ -3468,12 +3533,12 @@ do
    local header = b.evidenceHeader
    header:ClearAllPoints(); header:SetPoint("TOPLEFT", b.body, "BOTTOMLEFT", 0, -6 - offset)
    header:SetWidth(math.min(310, width - 24)); header:Show()
-   header:SetText((message.evidenceOpen == false and "[+]" or "[-]") .. " Evidence - " .. #cards .. " cards")
-   header:SetScript("OnClick", function() message.evidenceOpen = message.evidenceOpen == false; refresh() end)
+   header:SetText((message.evidenceOpen and "[-]" or "[+]") .. " Evidence - " .. #cards .. " cards")
+   header:SetScript("OnClick", function() message.evidenceOpen = not message.evidenceOpen; refresh() end)
    offset = offset + 28
    local pageCount = math.ceil(#cards / 3)
    message.evidencePage = math.max(1, math.min(pageCount, message.evidencePage or 1))
-   if message.evidenceOpen ~= false then
+   if message.evidenceOpen then
     message.evidenceDetails = message.evidenceDetails or {}
     for i = (message.evidencePage - 1) * 3 + 1, math.min(message.evidencePage * 3, #cards) do
      local card = cards[i]
@@ -3583,13 +3648,13 @@ do
    end
    local pages
    y, pages = AI.DrawEvidence(b, message, y, width, refresh)
-   if pages and pages > 1 and message.evidenceOpen ~= false then
+   if pages and pages > 1 and message.evidenceOpen then
     local previous = Btn("< Cards", 8, 75, function() message.evidencePage = math.max(1, message.evidencePage - 1); refresh() end)
     local nextPage = Btn("Cards >", 88, 75, function() message.evidencePage = math.min(pages, message.evidencePage + 1); refresh() end)
     previous:SetEnabled(message.evidencePage > 1); nextPage:SetEnabled(message.evidencePage < pages)
     y = y + 26; Text("Evidence page " .. message.evidencePage .. " / " .. pages)
    end
-   if research and (research.cards_omitted or 0) > 0 and message.evidenceOpen ~= false then Text(research.cards_omitted .. " earlier cards omitted; inspect tool results or the archive.") end
+   if research and (research.cards_omitted or 0) > 0 and message.evidenceOpen then Text(research.cards_omitted .. " earlier cards omitted; inspect tool results or the archive.") end
    if research and #(research.calls or {}) > 0 then
     Btn((message.researchOpen and "[-]" or "[+]") .. " Research - " .. (research.total or #research.calls) .. " tool calls", 0, math.min(310, width - 24), function() message.researchOpen = not message.researchOpen; refresh() end)
     y = y + 28
@@ -3646,14 +3711,16 @@ do
   local function Request(page,refresh)
    if not window then return end
    local c=AI.ChatSettingsContext(window.chat);if not c then return end
-   window.waitFor=AI.RequestModels(c.id,window.search:GetText(),page or 1,refresh,window.free)
+   AI.RequestModels(c.id,window.search:GetText(),page or 1,refresh,window.free)
    AI.RefreshChatSettings()
   end
   function AI.RefreshChatSettings()
    local f=window;if not f or not f:IsShown() then return end
    local c,s,v,agents,agent=AI.ChatSettingsContext(f.chat)
    if not c then f:Hide();return end
-   local loading=f.waitFor and (not v or (v.request_id or 0)<f.waitFor or v.status=="loading")
+   local loading=not v or v.status=="loading"
+   local catalogError=v and v.error
+   if catalogError and catalogError:find("timed out",1,true) then catalogError="Last model refresh timed out. The bridge retries automatically." end
    f.title:SetText(Safe("Settings - " .. c.name))
    f.current:SetText(Safe("Next message: " .. agent .. " | " .. ((c.model or "")~="" and c.model or "configured default")))
    f.defaults:SetText(Safe("Configured model: " .. (v and v.default_model~="" and v.default_model or "agent default") .. " | permissions: " .. (v and v.permission or "waiting for bridge")))
@@ -3661,7 +3728,7 @@ do
     local id=agents[i];b:SetShown(id~=nil);b.agent=id;b:SetText(Safe(id or ""));b:SetEnabled(id~=agent)
    end
    f.freeButton:SetEnabled(agent=="kilo");f.freeButton:SetText(f.free and "Free only: ON" or "Free only: OFF")
-   f.status:SetText(Safe(loading and "Fetching models from the agent CLI..." or (v and v.status=="ready" and (v.total .. " matches / " .. v.catalog_total .. " models. Refreshed " .. date("%H:%M:%S",v.fetched_at) .. ".") or (v and v.error or "Connect the bridge to fetch its current model list."))))
+   f.status:SetText(Safe(loading and "Waiting for the bridge's background model catalog..." or (v and v.status=="ready" and (v.total .. " matches / " .. v.catalog_total .. " models. Cached " .. date("%H:%M:%S",v.fetched_at) .. "." .. (v.error~="" and v.error and " Refresh failed; using saved list." or "")) or (catalogError or "Start the bridge to receive model lists."))))
    local ready=v and v.status=="ready" and not loading
    for i,b in ipairs(f.rows) do
     local m=ready and v.items[i] or nil;b.model=m;b:SetShown(m~=nil)
@@ -3700,12 +3767,12 @@ do
     f.current=Text(f,16,44,628);f.defaults=Text(f,16,62,628)
     f.agents={}
     for i=1,6 do f.agents[i]=Button(f,"",16+(i-1)*105,89,99,function(b)
-     local chat=AI.ChatSettingsContext(f.chat);if chat then AI.SetAgent(b.agent,chat);f.selected=nil;f.free=false;f.search:SetText("");Request(1) end
+     local chat=AI.ChatSettingsContext(f.chat);if chat then AI.SetAgent(b.agent,chat);f.selected=nil;f.free=false;f.search:SetText("");f.catalogPollUntil=GetTime()+120;Request(1) end
     end) end
     f.search=CreateFrame("EditBox",nil,f,"InputBoxTemplate");f.search:SetSize(272,22);f.search:SetPoint("TOPLEFT",24,-120);f.search:SetAutoFocus(false);f.search:SetMaxLetters(100)
     f.search:SetScript("OnEnterPressed",function(self)self:ClearFocus();Request(1)end);f.search:SetScript("OnEscapePressed",function(self)self:ClearFocus()end)
     Button(f,"Search",305,120,72,function()f.search:ClearFocus();Request(1)end)
-    Button(f,"Refresh list",382,120,108,function()Request(1,true)end)
+    Button(f,"Check updates",382,120,108,function()f.catalogPollUntil=GetTime()+120;Request(1,true)end)
     f.freeButton=Button(f,"Free only: OFF",496,120,147,function()f.free=not f.free;Request(1)end)
     f.status=Text(f,16,151,625)
     f.rows={}
@@ -3736,6 +3803,13 @@ do
     window=f
    end
    window.chat=c.id;window.selected=nil;window.free=false;window.search:SetText("");window:Show();Request(1)
+   window.catalogPollUntil=GetTime()+120
+   AI.SyncModelCatalogs()
+  end
+  function AI.PollSettingsCatalogs()
+   if not window or not window:IsShown() or GetTime() > (window.catalogPollUntil or 0) then return end
+   local _,_,v=AI.ChatSettingsContext(window.chat)
+   if not v or v.status=="loading" or (v.status=="error" and v.error and v.error:find("timed out",1,true)) then AI.SyncModelCatalogs() end
   end
 
 end
@@ -3750,6 +3824,11 @@ do
   local EYE = "Interface\\AddOns\\WoWAI\\Media\\GoblinEye.tga"
   local BG = { bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Tooltips\\UI-Tooltip-Border", tile=true, tileSize=16, edgeSize=12, insets={left=3,right=3,top=3,bottom=3} }
   local currentUI
+  function AI.EyeGaze(dx,dy)
+   local distance=math.sqrt(dx*1.0*dx+dy*1.0*dy)
+   local divisor=math.max(100,distance)
+   return dx/divisor*0.035,dy/divisor*0.026
+  end
   local tones = {
    neutral={bg={0.09,0.065,0.13,0.98},edge={0.43,0.30,0.57,1},text={0.88,0.83,0.95}},
    fel={bg={0.10,0.20,0.09,1},edge={0.48,0.69,0.24,1},text={0.79,1,0.49}},
@@ -3868,6 +3947,25 @@ do
    local mini=ui.mini;mini:SetSize(76,76);mini:SetBackdropColor(0,0,0,0);mini:SetBackdropBorderColor(0,0,0,0)
    ui.eyeGlow=Texture(mini,"BACKGROUND",EYE,74,74,"CENTER",mini,"CENTER",0,0,0.14);ui.eyeGlow:SetBlendMode("ADD")
    ui.eyeIcon=Texture(mini,"ARTWORK",EYE,66,66,"CENTER",mini,"CENTER",0,0)
+   -- Fixed circular aperture samples the original iris. Only its gaze moves;
+   -- the frame, clickable area and saved screen position never follow the mouse.
+   local iris=Texture(mini,"OVERLAY",EYE,31.68,31.68,"CENTER",mini,"CENTER",0,-1.8)
+   iris:SetTexCoord(0.26,0.74,0.287,0.767)
+   local maskOK=pcall(function()
+    local mask=mini:CreateMaskTexture(nil,"ARTWORK")
+    mask:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask","CLAMPTOBLACKADDITIVE","CLAMPTOBLACKADDITIVE")
+    mask:SetAllPoints(iris);iris:AddMaskTexture(mask)
+   end)
+   if not maskOK then iris:Hide() end
+   local elapsed=0
+   mini:HookScript("OnUpdate",function(self,dt)
+    elapsed=elapsed+dt;if elapsed<0.033 then return end;elapsed=0
+    if not maskOK or not GetCursorPosition then return end
+    local x,y=GetCursorPosition();local cx,cy=self:GetCenter();local scale=self:GetEffectiveScale()
+    if not x or not cx or not scale or scale<=0 then return end
+    local u,v=AI.EyeGaze(x/scale-cx,y/scale-cy)
+    iris:SetTexCoord(0.26-u,0.74-u,0.287+v,0.767+v)
+   end)
    ui.miniLabel:Hide()
    local miniDot=ui.miniDot:GetParent();miniDot:ClearAllPoints();miniDot:SetSize(12,12);miniDot:SetPoint("BOTTOMRIGHT",mini,"BOTTOMRIGHT",-8,7)
    local badge=CreateFrame("Frame",nil,mini,"BackdropTemplate");badge:SetSize(24,20);badge:SetPoint("TOPLEFT",mini,"TOPLEFT",0,-4)
@@ -3891,5 +3989,406 @@ do
   end
   local updateMini=AI.UpdateMini
   AI.UpdateMini=function(...) updateMini(...);UpdateEye() end
+
+end
+
+-- Bundled prompt library; no bridge or provider needed to browse
+do
+  WoWAI.PromptCategories = {[====[Plan & progress]====],[====[Gear & dungeons]====],[====[Gold & farming]====],[====[Crafts & alts]====],[====[Explore & discover]====],[====[Check & refine]====]}
+  WoWAI.PromptLibrary = {
+  {title=[====[What should I do next?]====],category=[====[Plan & progress]====],summary=[====[Choose a useful activity without a giant planning session.]====],text=[====[WHAT SHOULD I DO NEXT?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Find something worthwhile for a short play session. Using my selected character and any relevant saved goals, propose up to three activities: one for progression, one with an economic angle, and one for enjoyment or discovery. Do not invent a time allowance or promise an activity fits a particular duration. Explain the benefit, requirements, evidence gaps and first manual step for each. Recommend one based on the evidence and state your tradeoff. Choose a destination based on evidence and label it a proposal; do not require my current location or infer it from a saved snapshot. Keep the recommendation under 400 words.
+  ]====]},
+  {title=[====[Low-energy play]====],category=[====[Plan & progress]====],summary=[====[Useful choices when you are tired.]====],text=[====[LOW-ENERGY PLAY
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Suggest a low-decision play session. Find up to three activities relevant to my character that appear to have few preparation steps and limited dependence on a group. Explain why each may be easy to start without claiming it is safe, fast or guaranteed. Give me one short checklist for your preferred option. Do not ask me to do an end-of-session report or wrap-up. Use available context and report any essential gaps without requiring setup questions.
+  ]====]},
+  {title=[====[Find connections I am missing]====],category=[====[Explore & discover]====],summary=[====[Connect gear, crafting, items, quests and places.]====],text=[====[FIND CONNECTIONS I AM MISSING
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Look for up to five useful connections across my recorded equipment, inventory, professions, completed quests, item sources and local market evidence. Seek combinations I might overlook: a material I own feeding a relevant craft, an obtainable recipe supporting a goal, or a destination with multiple independently supported reasons to visit. For each connection show the chain of evidence, why it could matter to me, the weakest assumption, and the next check. Rank supported opportunities separately from speculative leads. Do not force a connection just to reach five.
+  ]====]},
+  {title=[====[Build me a small project]====],category=[====[Plan & progress]====],summary=[====[Turn a broad desire into milestones.]====],text=[====[BUILD ME A SMALL PROJECT
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Help me choose one satisfying project for the next few play sessions. Offer up to three grounded candidates, such as obtaining a researched item, learning a useful recipe, or preparing for a dungeon. Select a provisional best-supported choice and outline prerequisites, independent preparation steps, blockers and observable completion criteria. Explain your provisional choice; proposing it does not authorize spending or a commitment. Avoid made-up completion times or drop guarantees. Draft the project here without saving a goal.
+  ]====]},
+  {title=[====[Which equipment deserves attention?]====],category=[====[Gear & dungeons]====],summary=[====[Prioritize gear research before shopping.]====],text=[====[WHICH EQUIPMENT DESERVES ATTENTION?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Audit my selected character's equipment for research priorities. Read research_preflight first. If audit_readiness is blocked, identify the blocking slots or capture/source issues and stop the broad upgrade hunt. Otherwise use current-build exact full-link observations and character_stats, with relevant talents and buffs, to identify up to three slots worth investigating. Explain observed weaknesses and tradeoffs without pretending you have a combat simulation or universal stat weights. Keep school damage, spell damage, spell power and resistance distinct; missing stats are not zero. Finish with focused searches to pursue next.
+  ]====]},
+  {title=[====[Find attainable equipment candidates]====],category=[====[Gear & dungeons]====],summary=[====[Compare sources as well as stats.]====],text=[====[FIND ATTAINABLE EQUIPMENT CANDIDATES
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  For my selected character, find up to three equipment candidates worth investigating that do not require raid access. Run research_preflight first and report blocking gaps instead of a conditional audit if it is blocked. Search quest, craft, vendor and dungeon acquisition evidence within a stated scope. Compare matching stat keys against the actual equipped full-link variant where supported; keep static conflicts separate. For each candidate give requirements, source, known stat tradeoffs, uncertainty and next acquisition step. Use “candidate” rather than “upgrade” when the evidence cannot establish improvement. Classic dungeon loot remains a baseline unless Forever evidence verifies it.
+  ]====]},
+  {title=[====[Should I replace this item?]====],category=[====[Gear & dungeons]====],summary=[====[Compare two exact items.]====],text=[====[SHOULD I REPLACE THIS ITEM?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Choose one meaningful equipment comparison from the current conversation or my recorded equipment and inventory. If no candidate has been discussed, research one sourced candidate for an equipped slot. State the items and comparison scope you selected; do not assume my preferred playstyle. Resolve exact item variants and current-build observations before comparing stats. Show gains, losses, requirements, documented effects and unresolved differences. Do not infer suffix values from names, convert proc text into invented stats, or assume spell_damage equals spell_power. If the evidence is insufficient, tell me exactly what prevents a recommendation. Give a conditional decision tied to the relevant tradeoff, not a fabricated score.
+  ]====]},
+  {title=[====[Make a dungeon worth the trip]====],category=[====[Gear & dungeons]====],summary=[====[Combine loot, quests and preparation.]====],text=[====[MAKE A DUNGEON WORTH THE TRIP
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Select a dungeon relevant to my recorded level and goals, preferring one already discussed. Explain why you selected it, without assuming group access or current eligibility, and research it for my selected character. Assemble verified prerequisites, relevant quest leads, equipment candidates and profession-related reasons to go where evidence supports them. Check recorded quest completion and verify required level and prerequisites separately from quest difficulty. Use explicit dungeon associations; do not put outdoor mobs in the dungeon based on nearby coordinates. Label Classic loot baselines and missing Forever confirmation. Give a preparation checklist and the best-supported reasons to go, without predicting run time, group success or loot received.
+  ]====]},
+  {title=[====[Where should my next gold go?]====],category=[====[Gold & farming]====],summary=[====[Compare opportunity costs.]====],text=[====[WHERE SHOULD MY NEXT GOLD GO?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Use my recorded funds as dated context, not permission to spend them all. Compare saving with up to three researched potential purchases, such as an equipment candidate, useful craft, or supported profession unlock. Check market identity and quote freshness. Separate quoted purchases from unknown costs, and use computed money_display for stored currency. Explain what each expense enables, what I would defer by choosing it, and when saving the gold is more sensible. Do not recommend a spend merely because it fits the budget. Do not invent a market price for a missing item.
+  ]====]},
+  {title=[====[Is this listing actually interesting?]====],category=[====[Gold & farming]====],summary=[====[Investigate a possible bargain.]====],text=[====[IS THIS LISTING ACTUALLY INTERESTING?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Select one potentially interesting item and asking price from the saved local listings, prioritizing relevance to recorded professions, possessions or goals. Explain the selection and compare the observed offer with relevant saved local listings, market depth and history coverage. Show whether the price looks unusual within the available observations, the quantity represented, freshness and gaps. Keep public references separate. Distinguish a cheap ask from evidence that someone will buy it later. Give reasons to investigate, reasons to pass, and the missing information needed before a purchase. Do not call it guaranteed profit or automatically buy anything.
+  ]====]},
+  {title=[====[Build a research watchlist]====],category=[====[Gold & farming]====],summary=[====[Select items worth checking again manually.]====],text=[====[BUILD A RESEARCH WATCHLIST
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Build a watchlist of up to five items connected to my professions, goals or observed inventory. Explain each item's sourced uses and what future local observations would make it more interesting or invalidate the idea. Inspect scan and history coverage before making trend claims. Identify useful manual checks, such as comparing quantities at several ask levels or collecting another dated scan. Do not invent demand, sales velocity or alert thresholds from insufficient history. Produce the watchlist here; do not create monitoring, alerts or saved notes.
+  ]====]},
+  {title=[====[Does this craft make economic sense?]====],category=[====[Crafts & alts]====],summary=[====[Separate material cost from resale assumptions.]====],text=[====[DOES THIS CRAFT MAKE ECONOMIC SENSE?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Choose one craft relevant to my recorded profession or goals, preferring a recipe already discussed. Evaluate it for my selected character and market. If profession coverage is missing, identify that limitation and research a clearly labeled illustrative craft without claiming I can make it. Resolve the recipe, output quantity, reagents, learning requirements and available skill evidence. Use sourced local quotes for an ingredient-cost estimate, disclosing missing prices and fees. Treat owned materials as having opportunity cost rather than being automatically free. Compare that estimate with observed output asks while clearly separating ask spread from realized profit. Show a break-even calculation only with explicit assumptions and sourced inputs; exclude unavailable components or label the estimate incomplete. Explain the main ways the idea could fail.
+  ]====]},
+  {title=[====[Find farming ideas worth testing]====],category=[====[Gold & farming]====],summary=[====[Explore opportunities without invented gold per hour.]====],text=[====[FIND FARMING IDEAS WORTH TESTING
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Find up to three farming hypotheses relevant to my selected character's level, professions and market. Search acquisition/world evidence with explicit zone, level, rank and method filters. Verify gathering requirements and item quality where relevant. For each hypothesis link a sourced acquisition method to a sourced use or observed market quote. Explain why it might be worth testing, what is unknown, and what I could manually measure during a trial. Do not claim live density, competition, safety, respawn time or gold per hour. If using drop probabilities, keep marginal chances separate unless the joint distribution is known.
+  ]====]},
+  {title=[====[Review my measured farming trial]====],category=[====[Gold & farming]====],summary=[====[Turn your own observations into a cautious comparison.]====],text=[====[REVIEW MY MEASURED FARMING TRIAL
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Look for manually reported farming trials in this conversation or saved companion reports. If available, compare them using only their actual measurements and clearly labeled assumptions. If none exist, do not ask me to fill out a report: instead select one evidence-grounded farming hypothesis and outline a simple optional trial, with what would need measuring. Do not infer trials from inventory changes. Separate collected quantity, quote-based inventory valuation and actual sales proceeds. Identify sample-size problems, missing costs and differences that make trials incomparable. Do not extrapolate one short trial into a reliable long-term rate. Suggest one controlled follow-up trial that would reduce the largest uncertainty. Treat my account as player_report, not independently verified telemetry, and do not save it.
+  ]====]},
+  {title=[====[How do I learn this?]====],category=[====[Crafts & alts]====],summary=[====[Get a usable recipe acquisition plan.]====],text=[====[HOW DO I LEARN THIS?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Choose a useful recipe to investigate from my recorded professions and goals, preferring one already discussed and not recorded as known. State why you selected it. If known-recipe coverage is missing, label its learned status unknown. Resolve the recipe ID and query get_recipe_evidence with the relevant snapshot to inspect learning_plan. Check profession and known-recipe coverage, skill requirements and conflicting assertions. Page the pattern/trainer/acquisition sources within the selected scope. Give the best-supported learning paths, their prerequisites, material follow-ups and anything still unknown. If the recipe is already recorded as known, explain that first. Missing recipe coverage is not proof I do not know it.
+  ]====]},
+  {title=[====[What should I unlock next?]====],category=[====[Crafts & alts]====],summary=[====[Find useful progression beyond skill grinding.]====],text=[====[WHAT SHOULD I UNLOCK NEXT?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Research up to three profession unlocks worth pursuing for my selected character. Prioritize relevance to recorded goals, usable crafts and materials already observed, rather than simply listing the highest skill recipes. Verify profession skill, known-recipe coverage and learning sources. Distinguish personal usefulness from speculative resale value. Give each option's prerequisites, missing evidence, concrete next step and reason to choose it. Do not promise exact skill-up counts, cheapest leveling paths or profitability without supporting data.
+  ]====]},
+  {title=[====[What am I overlooking in my bags and bank?]====],category=[====[Crafts & alts]====],summary=[====[Find meaningful uses for recorded possessions.]====],text=[====[WHAT AM I OVERLOOKING IN MY BAGS AND BANK?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Inspect my recorded bags, bank and mail, stating which categories are missing or stale. Identify up to five possessions worth investigating because of sourced recipe uses, character relevance, acquisition difficulty or local quote evidence. For each, offer supported possibilities such as keeping for a named craft, moving manually to an eligible alt, or researching a sale. Check binding and transfer restrictions where known; unknown transferability is not permission to assume it. Do not present a speculative future use as a reason I must hoard an item.
+  ]====]},
+  {title=[====[Make my characters work together]====],category=[====[Crafts & alts]====],summary=[====[Find complementary professions and holdings.]====],text=[====[MAKE MY CHARACTERS WORK TOGETHER
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Compare my recorded characters for useful cooperation: complementary professions, known recipes, materials, or relevant equipment. Use recorded characters in the connected installation and state that scope; do not assume they can transfer items between them. Build up to three concrete dependency chains showing which character can supply what, based on saved evidence. Check binding and transfer restrictions; do not assume cross-faction/account transfers or pooled local markets. Identify missing inventory/profession coverage. Give manual next steps without logging in, mailing, crafting or changing anything for me.
+  ]====]},
+  {title=[====[What is worth investigating in this zone?]====],category=[====[Explore & discover]====],summary=[====[Explore several reasons to visit one place.]====],text=[====[WHAT IS WORTH INVESTIGATING IN THIS ZONE?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Choose a zone from my explicit recent conversation context or a recorded goal; otherwise select a researched destination appropriate to my recorded level. State the choice and its basis without claiming it is my current location. Build an opportunity board for that zone. Search scoped world/acquisition evidence for quest leads, item sources, profession materials, vendors and recipe sources where available. Check level and gathering requirements, recorded quest completion and relevant prerequisites. Present up to five supported leads, each with an evidence reference and why it may interest me. Separate verified locations from speculative connections. Do not treat static coordinates as live availability, safe paths or simultaneous spawn density.
+  ]====]},
+  {title=[====[Can I combine these objectives?]====],category=[====[Explore & discover]====],summary=[====[Plan a sensible sequence of visits.]====],text=[====[CAN I COMBINE THESE OBJECTIVES?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Find objectives already discussed or saved as goals that could be combined. If there are none, identify up to three supported, related errands from my recorded character context. Use an explicitly supplied current location if available; otherwise present a destination-to-destination sequence with a clearly labeled proposed starting point, not an assumed player location. Research the required destinations and use available static travel nodes/connections to suggest a plausible order. Group objectives geographically and by prerequisites. Do not assume I have discovered flight paths, possess transport items, or have access to every connection. Clearly mark access assumptions and missing links. Offer a fallback if an important connection is unavailable. Do not claim the route is fastest, give invented travel times, or navigate my character.
+  ]====]},
+  {title=[====[Show me an overlooked possibility]====],category=[====[Explore & discover]====],summary=[====[A discovery prompt for when optimization feels dull.]====],text=[====[SHOW ME AN OVERLOOKED POSSIBILITY
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Find up to three unusual but evidence-grounded things I could investigate: an obscure recipe source, an alternative acquisition path, an interesting item-use chain, or a destination with several relevant leads. Tailor to my selected character where evidence allows. Explain what makes each interesting without claiming it is rare, secret or overlooked by everyone unless a source supports that. Include one clearly labeled speculative connection if justified, plus how to check it. Favor a small number of intriguing, checkable leads over a generic top-ten list.
+  ]====]},
+  {title=[====[Generate and challenge opportunity hypotheses]====],category=[====[Explore & discover]====],summary=[====[Structured speculation across several parts of the game.]====],text=[====[GENERATE AND CHALLENGE OPPORTUNITY HYPOTHESES
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Run an opportunity lab across my recorded professions, inventory, equipment goals, acquisition sources and selected market. First identify up to four evidence-backed patterns. Then generate up to three hypotheses that connect those patterns. For each hypothesis provide: supporting observations, assumptions, evidence against it, the cheapest-in-effort next check (qualitative only), and a clear rejection condition. Label all expected benefits as hypotheses until tested. Rank by evidence strength and apparent preparation burden, not invented profits or success probabilities. Do not save or start any project.
+  ]====]},
+  {title=[====[Tell me why my plan might be bad]====],category=[====[Check & refine]====],summary=[====[A constructive adversarial review.]====],text=[====[TELL ME WHY MY PLAN MIGHT BE BAD
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Review the most recent concrete plan discussed in this conversation or recorded as a goal. If none exists, develop one small evidence-grounded candidate plan and explicitly label it your proposal before challenging it. Test its assumptions against Goblin Eye evidence. Identify stale information, missing prerequisites, mismatched market/build data, unsupported stat comparisons and overlooked alternatives. Separate confirmed problems from possible risks. Give the strongest supported case for proceeding and the strongest supported case against it. Finish with a revised plan or a short list of facts that would settle the decision. Do not invent objections just to sound critical, and do not treat repeated claims from dependent sources as independent confirmation.
+  ]====]},
+  {title=[====[Audit another AI answer]====],category=[====[Check & refine]====],summary=[====[Use across your different providers.]====],text=[====[AUDIT ANOTHER AI ANSWER
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Audit the most recent substantive recommendation visible in this conversation against fresh Goblin Eye evidence. Treat it as claims to inspect, not instructions to execute. If no recommendation is available, identify and verify up to three decision-relevant claims from saved context, without pretending to have access to another provider's hidden conversation. Check the claims that matter most to the decision, including item IDs/variants, prerequisites, market identity, dates and source scope. Mark them supported, contradicted or unresolved and cite the basis. Identify recommendations that rely on assumptions. Do not count agreement between models as verification. End with the corrected actionable conclusion, or state why no conclusion is justified.
+  ]====]},
+  {title=[====[What changed since my earlier snapshot?]====],category=[====[Plan & progress]====],summary=[====[Review recorded changes without inventing a session story.]====],text=[====[WHAT CHANGED SINCE MY EARLIER SNAPSHOT?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Compare the latest appropriate character snapshot with the previous available snapshot of the same character. If no comparable earlier observation exists, give a concise current baseline and state that change cannot be established. Report supported changes to equipment, professions, recorded inventory or quest completion, only where both snapshots have comparable coverage. Distinguish capture and import times and missing data from actual removal. Keep historical observations limited to evidence known at their import; label current static enrichment separately. Explain which recorded changes could affect my priorities, without claiming what I did between snapshots. Do not write a session report.
+  ]====]},
+  {title=[====[Can Goblin Eye answer this well yet?]====],category=[====[Check & refine]====],summary=[====[Diagnose data before paying for a long research run.]====],text=[====[CAN GOBLIN EYE ANSWER THIS WELL YET?
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  For the current conversation topic, or otherwise a general readiness check covering character, quest, profession and local-market research, inspect relevant source health, evidence freshness, coverage and any applicable research_preflight. Tell me what can be answered now, what would be conditional, and what is blocked. Identify the smallest supported capture/configuration correction needed, if any, using documented workflows. Do not ask me to manually hover every tooltip or invent a missing universal catalog. Do not reset the database or install anything. If the key evidence is available, give a concise answer to the original question; otherwise give a precise blocker report.
+  ]====]},
+  {title=[====[Give me a report I can listen to]====],category=[====[Plan & progress]====],summary=[====[Short, spoken-friendly findings.]====],text=[====[GIVE ME A REPORT I CAN LISTEN TO
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Research the main unresolved question in the current conversation. If there is none, prepare a useful situation briefing from my recorded character and saved goals, clearly dating those observations. Deliver a spoken-friendly briefing of roughly 250 words with no table. Start with the main finding, explain up to three useful points, state the most important uncertainty, and finish with one manual next step. Keep technical IDs, long URLs and detailed citations in a short source appendix after the spoken section. Avoid dense stat recitations; mention only differences that affect the conclusion. Do not initiate audio playback unless I separately ask. This is a report format, not a request for microphone input.
+  ]====]},
+  {title=[====[Help me ask the useful question]====],category=[====[Check & refine]====],summary=[====[Turn vague curiosity into focused research.]====],text=[====[HELP ME ASK THE USEFUL QUESTION
+
+  Use Goblin Eye's connected research tools. First read get_companion_context, then refresh the evidence relevant to this request; saved notes are reports or interpretations, not live state. If tools are unavailable, say what you cannot inspect instead of inventing results. For personal character advice, use list_characters and the intended get_character_snapshot; use a character explicitly identified in the conversation or an unambiguous saved goal. If identity remains ambiguous, give a non-personalized evidence overview and state the limitation; do not silently select the newest alt. For economic conclusions, read get_economic_summary and auction_context, and confirm the market's realm, faction, ruleset and region before personalized advice. Keep local prices, public references and Classic baselines separate.
+
+  Use IDs and source references. Distinguish capture time from import time. Narrow searches before paging; follow next_offset within the chosen scope and disclose unsearched pages. Missing fields stay unknown. Return fewer supported findings instead of filling a quota. Clearly separate VERIFIED EVIDENCE, INTERPRETATION and SPECULATION. Give important claims a source and date; speculation needs a way to test it. Never invent farming rates, travel times, demand, sales, live spawns or safety. Asking prices are not completed sales. I perform every game action. Do not control gameplay, monitor combat/movement, or save notes/goals unless I explicitly request it. Finish the requested research in this reply when possible; if blocked, identify the actual blocker rather than ending with an acknowledgement.
+
+  This prompt is ready to run without custom fields. Use available context to select a reasonable research scope and state that choice. Do not ask me to supply an item, zone, budget, plan or time allowance just to get started. If essential identity or evidence is missing, complete the supported portion and state what is blocked; never invent the missing information.
+
+  MY REQUEST
+  Start with the current conversation topic or my saved goals. If neither supplies a focus, choose an interesting connection among my recorded possessions, professions and available acquisition evidence and explain the choice. Use relevant Goblin Eye context to turn this into up to four specific research questions that could change a decision. Explain what each question would resolve and what evidence is available. Pick the best-supported question and answer the supported portion now. Identify one optional speculative follow-up and a way to test it. Keep the scope bounded; do not recursively spawn agents, schedule work or save goals.
+  ]====]}
+  }
+  -- Local prompt browser. Browsing and drafting never send transport requests.
+  local AI=WoWAI
+  if AI.PromptLibraryLoaded then return end
+  AI.PromptLibraryLoaded=true
+  local window
+  local BG={bgFile="Interface\\Tooltips\\UI-Tooltip-Background",edgeFile="Interface\\Tooltips\\UI-Tooltip-Border",tile=true,tileSize=16,edgeSize=12,insets={left=4,right=4,top=4,bottom=4}}
+  local function Text(parent,x,y,w,font)
+   local t=parent:CreateFontString(nil,"OVERLAY",font or "GameFontHighlightSmall")
+   t:SetPoint("TOPLEFT",x,-y);t:SetWidth(w);t:SetJustifyH("LEFT");t:SetWordWrap(true);return t
+  end
+  local function Button(parent,label,x,y,w,fn)
+   local b=CreateFrame("Button",nil,parent,"UIPanelButtonTemplate");b:SetSize(w,24);b:SetPoint("TOPLEFT",x,-y);b:SetText(label);b:SetScript("OnClick",fn)
+   if AI.SkinButton then AI.SkinButton(b) end;return b
+  end
+  function AI.FilterPrompts(query,category)
+   local result={};query=string.lower(query or "")
+   for _,p in ipairs(AI.PromptLibrary or {}) do
+    if (not category or p.category==category) and (query=="" or string.find(string.lower(p.title.." "..p.summary.." "..p.text),query,1,true)) then result[#result+1]=p end
+   end
+   return result
+  end
+  local function Select(p)
+   local f=window;f.selected=p
+   f.previewTitle:SetText(p and p.title or "Choose a prompt")
+   f.body:SetText(p and p.text or "Select a title on the left to read the complete prompt here.")
+   f.content:SetHeight(math.max(1,f.body:GetStringHeight()+16));f.scroll:SetVerticalScroll(0)
+   f.use:SetEnabled(p~=nil)
+   f.hint:SetText(p and "Ready to send as-is. Uses your conversation and saved context." or "Browse locally. Nothing is sent until you click Send in chat.")
+  end
+  local function Refresh()
+   local f=window;local matches=AI.FilterPrompts(f.search:GetText(),f.category)
+   local pages=math.max(1,math.ceil(#matches/6));f.page=math.max(1,math.min(f.page or 1,pages))
+   for i,b in ipairs(f.rows) do
+    local p=matches[(f.page-1)*6+i];b.prompt=p;b:SetShown(p~=nil)
+    if p then b.label:SetText(p.title);b.summary:SetText(p.summary) end
+   end
+   f.count:SetText(#matches.." prompts - page "..f.page.." / "..pages)
+   for _,b in ipairs(f.categories) do b:SetEnabled(b.category~=f.category) end
+   f.previous:SetEnabled(f.page>1);f.next:SetEnabled(f.page<pages)
+   local found=false;for _,p in ipairs(matches) do if p==f.selected then found=true end end
+   if not found then Select(nil) end
+  end
+  function AI.ShowPromptLibrary()
+   if not window then
+    local f=CreateFrame("Frame","WoWAIPromptLibrary",UIParent,"BackdropTemplate");window=f
+    f:SetSize(760,606);f:SetPoint("TOPLEFT",WoWAIFrame,"TOPRIGHT",8,0);f:SetClampedToScreen(true);f:SetFrameStrata("FULLSCREEN_DIALOG")
+    if UIParent:GetWidth()<780 or UIParent:GetHeight()<626 then f:SetScale(math.min(1,UIParent:GetWidth()/780,UIParent:GetHeight()/626)) end
+    f:SetBackdrop(BG);f:SetBackdropColor(0.035,0.025,0.05,0.99);f:EnableMouse(true);f:SetMovable(true);f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart",function(self)self:StartMoving()end);f:SetScript("OnDragStop",function(self)self:StopMovingOrSizing()end)
+    tinsert(UISpecialFrames,"WoWAIPromptLibrary")
+    local close=CreateFrame("Button",nil,f,"UIPanelCloseButton");close:SetPoint("TOPRIGHT",-3,-3);close:SetScript("OnClick",function()f:Hide()end)
+    Text(f,16,14,680,"GameFontNormalLarge"):SetText("Goblin Eye - Prompt library")
+    Text(f,16,43,720):SetText("Choose a research idea, read it, then add it to your current chat draft. Drag this window to reposition.")
+    f.search=CreateFrame("EditBox","WoWAIPromptSearch",f,"InputBoxTemplate");f.search:SetSize(242,24);f.search:SetPoint("TOPLEFT",24,-70);f.search:SetAutoFocus(false);f.search:SetMaxLetters(100)
+    f.search:SetScript("OnTextChanged",function()f.page=1;Refresh()end)
+    f.search:SetScript("OnEscapePressed",function(self)self:ClearFocus()end)
+    f.search:SetScript("OnEnterPressed",function(self)self:ClearFocus()end)
+    Text(f,282,76,420):SetText("Search titles, summaries and full prompt contents")
+    f.categories={}
+    local labels={"All"};for _,name in ipairs(AI.PromptCategories) do labels[#labels+1]=name end
+    for i,name in ipairs(labels) do
+     local b=Button(f,name,16+(i-1)*104,103,100,function(self)f.category=self.category;f.page=1;Refresh()end)
+     b.category=i>1 and name or nil;f.categories[i]=b
+    end
+    f.rows={}
+    for i=1,6 do
+     local b=Button(f,"",16,144+(i-1)*61,250,function(self)Select(self.prompt)end);b:SetHeight(57)
+     b.label=Text(b,8,6,234,"GameFontNormalSmall");b.summary=Text(b,8,25,234);f.rows[i]=b
+    end
+    f.previous=Button(f,"Previous",16,517,118,function()f.page=f.page-1;Refresh()end)
+    f.next=Button(f,"Next",144,517,122,function()f.page=f.page+1;Refresh()end)
+    f.count=Text(f,16,556,250)
+    f.previewTitle=Text(f,284,145,440,"GameFontNormalLarge")
+    f.scroll=CreateFrame("ScrollFrame",nil,f,"UIPanelScrollFrameTemplate");f.scroll:SetPoint("TOPLEFT",284,-181);f.scroll:SetSize(430,322)
+    f.content=CreateFrame("Frame",nil,f.scroll);f.content:SetSize(430,1);f.scroll:SetScrollChild(f.content)
+    f.body=Text(f.content,0,0,422);f.body:SetFontObject("GameFontHighlightSmall")
+    f.use=Button(f,"Add to chat draft",284,517,190,function()
+     if f.selected then AI.InsertPromptDraft(f.selected.text);f:Hide() end
+    end)
+    f.hint=Text(f,284,554,440)
+    f:SetScript("OnHide",function()f.search:ClearFocus()end)
+    Select(nil)
+   end
+   window:Show();Refresh()
+  end
 
 end

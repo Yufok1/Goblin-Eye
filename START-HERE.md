@@ -41,7 +41,7 @@ Goblin Eye stays in its own folder, outside WoW's AddOns folder.
 
 1. Open **CurseForge** and select **World of Warcraft**.
 2. Select your **Forever** game installation. Check that you are managing the
-   same installation you actually play; the supported beta folder is `_classic_beta_`.
+   same installation you actually play; the live folder is `_forever_` (`_classic_beta_` is the older beta).
 3. Search for and install the addons listed below. Select releases marked
    **Forever / 1.60.1** when a project supports several WoW editions.
 4. Let CurseForge install the required dependencies and keep them installed.
@@ -179,7 +179,7 @@ and static spawn references do not show live mob availability.
 | Character or scans are empty | Confirm the addons are enabled, finish the capture/scan, then `/reload` in WoW. Check Source health for an import error. |
 | Questie data is missing | Confirm `QuestieDB` is installed alongside `Questie`, including its Forever `.toc` file. |
 | Static data is missing | Check the Forever addon version, installation folder, and Source health. Allow the first import to finish. |
-| WoW is installed in a custom location | Follow [Custom install paths](docs/CUSTOM_PATHS.md). Discovery currently checks common C: and D: locations for `_classic_beta_`. |
+| WoW is installed in a custom location | Follow [Custom install paths](docs/CUSTOM_PATHS.md). Discovery checks common C: and D: locations, preferring `_forever_` and using `_classic_beta_` only when live is absent. |
 | You moved the extracted folder and it will not start | There is no environment to clean up any more. Put the whole folder back together, or extract the ZIP again somewhere writable, then run `Start-Goblin-Eye.cmd`. Keep `data` and `config.json` if you want your evidence. |
 | Updating an existing copy | Extract the new ZIP separately. Stop Goblin Eye, back up your old `data` folder and `config.json`, then copy them into the new folder before launching it. |
 

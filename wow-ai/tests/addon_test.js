@@ -151,11 +151,11 @@ test('Stop cancels a message waiting for connection before it can auto-send', ()
  assert.equal(vm.evaluate('WoWAIInput.text'),'do not send this');
 });
 
-test('settings fetch dynamic models, select an exact CLI ID and reasoning choice, and retain pending-send choices',()=>{
+test('settings receive background models without strip requests and retain pending-send choices',()=>{
  const vm=newVM();vm.run('WoWAI_Inbox.agent="kilo";WoWAI_Inbox.agents={"claude","codex","kilo","grok","agy","hermes"}');login(vm);connect(vm);vm.run('WoWAI.SetAgent("kilo");WoWAI.ShowChatSettings()');
- const request=stripRecords(vm).find(r=>r.flags==='models');assert.ok(request);assert.equal(JSON.parse(request.text).agent,'kilo');assert.equal(vm.evaluate('WoWAIDB.chats[1].pendingId'),null);
+ assert.equal(stripRecords(vm).some(r=>r.flags==='models'),false);assert.equal(vm.evaluate('WoWAIDB.chats[1].pendingId'),null);
  const P=require('../bridge/protocol'),model={id:'kilo/fresh:free',name:'Brand new model',description:'Live catalog model',free:true,variants:['low','high'],efforts:[]};
- vm.run('STUB.onLoadAddOn = function(name)\n'+P.luaTable('WoWAI_SlotData',[],{now:1700001035000,catalogs:[{chat:request.chat,agent:'kilo',request_id:request.id,status:'ready',items:[model],page:1,pages:1,total:1,catalog_total:1,fetched_at:1700001035,can_restrict:true,default_model:'old'}],controlAcks:[{session:request.session,id:request.id}]})+'\nend');
+ vm.run('STUB.onLoadAddOn = function(name)\n'+P.luaTable('WoWAI_SlotData',[],{now:1700001035000,catalogs:[{complete:true,agent:'kilo',status:'ready',items:[model],total:1,catalog_total:1,fetched_at:1700001035,can_restrict:true,default_model:'old'}]})+'\nend');
  vm.run('STUB.now=STUB.now+29;STUB.Tick()');
  vm.run('GameTooltip.SetText=function(self,text,...) assert(select("#",...)==0,"Model hover forwarded an unwanted SetText argument");self.text=text end');
  assert.equal(vm.evaluate('(function() for _,f in ipairs(STUB.frames) do if f.shown and f.model and f.model.id=="kilo/fresh:free" then f.scripts.OnEnter(f);return true end end end)()'),'true');
@@ -168,6 +168,33 @@ test('settings fetch dynamic models, select an exact CLI ID and reasoning choice
  vm.run('WoWAI.Send("check herbs")');const job=P.jobsFromStrip(decodeStrip(vm).id,decodeStrip(vm).text).find(j=>j.text==='check herbs');assert.equal(JSON.parse(job.options).variant,'high');assert.equal(job.agent,'kilo');
  vm.run('WoWAIDB.chats[1].model="kilo/different";WoWAI.Resend()');const resent=P.jobsFromStrip(decodeStrip(vm).id,decodeStrip(vm).text).find(j=>j.id===job.id);assert.equal(JSON.parse(resent.options).model,'kilo/fresh:free');
  vm.run('WoWAI.SetAgent("codex")');assert.equal(vm.evaluate('WoWAIDB.chats[1].model'),null);assert.equal(vm.evaluate('WoWAIDB.chats[1].variant'),null);
+});
+
+test('cached settings paginate and filter locally, survive reload and reject partial catalogs',()=>{
+ const vm=newVM();login(vm);
+ vm.run('local items={};for i=1,27 do items[i]={id="m"..i,name=string.format("Model %02d",i),description="",free=i%2==0,variants={},efforts={"low","high"}} end; WoWAI.ReceiveModelCatalogs({{complete=true,agent="codex",status="ready",items=items,catalog_total=27,fetched_at=1700001000,default_model="m1",error=""}});WoWAI.SetAgent("codex");WoWAI.ShowChatSettings()');
+ const seq=vm.num('WoWAIDB.lastSeq');
+ vm.run('WoWAI.RequestModels(nil,"",3,false,false);local _,_,v=WoWAI.ChatSettingsContext();VIEW=v');
+ assert.equal(vm.num('#VIEW.items'),7);assert.equal(vm.num('VIEW.pages'),3);
+ vm.run('WoWAI.RequestModels(nil,"Model 02",1,false,false);local _,_,v=WoWAI.ChatSettingsContext();VIEW=v');
+ assert.equal(vm.num('VIEW.total'),1);assert.equal(vm.evaluate('VIEW.items[1].id'),'m2');
+ vm.run('WoWAI.RequestModels(nil,"",1,false,true);local _,_,v=WoWAI.ChatSettingsContext();VIEW=v');
+ assert.equal(vm.num('VIEW.total'),13);
+ vm.run('WoWAI.ReceiveModelCatalogs({{agent="codex",status="ready",items={}}}); WoWAI.ReceiveModelCatalogs({{complete=true,agent="codex",status="loading",items={}}})');
+ assert.equal(vm.num('#WoWAIDB.modelCatalogs.codex.items'),27);
+ vm.run('WoWAIDB.settings.mode="reload";WoWAI.ShowChatSettings();WoWAI.RequestModels(nil,"",2,true,false)');
+ assert.equal(vm.num('WoWAIDB.lastSeq'),seq);assert.equal(vm.evaluate('WoWAIDB.outbox'),null);
+ const saved=vm.evaluate('WoWAIDB.modelCatalogs.codex.status');assert.equal(saved,'ready');
+});
+
+test('a cached Kilo timeout continues checking inbound catalogs and recovers without strip requests',()=>{
+ const vm=newVM();login(vm);
+ vm.run('WoWAI.SetAgent("kilo");WoWAI.ReceiveModelCatalogs({{complete=true,agent="kilo",status="error",error="Model discovery timed out. Refresh to retry.",items={}}});WoWAI.ShowChatSettings()');
+ const seq=vm.num('WoWAIDB.lastSeq');
+ const P=require('../bridge/protocol');
+ vm.run('STUB.onLoadAddOn=function(name)\n'+P.luaTable('WoWAI_SlotData',[],{catalogs:[{complete:true,agent:'kilo',status:'ready',items:[{id:'kilo/recovered',name:'Recovered',variants:[],efforts:[]}],catalog_total:1,fetched_at:1700001000}]})+'\nend;STUB.now=STUB.now+60;WoWAI.PollSettingsCatalogs()');
+ assert.equal(vm.evaluate('WoWAIDB.modelCatalogs.kilo.status'),'ready');
+ assert.equal(vm.evaluate('WoWAIDB.modelCatalogs.kilo.items[1].id'),'kilo/recovered');assert.equal(vm.num('WoWAIDB.lastSeq'),seq);
 });
 
 test('settings options persist in the reload outbox, and controls never become AI prompts',()=>{
@@ -269,6 +296,7 @@ test('evidence cards expand, copy and open results; Ask more only drafts and pre
  const research={calls:[{id:'depth',name:'get_market_depth',result:'FULL PRICE RESULT',status:'completed'}],...E.cardsForCalls([{id:'depth',name:'goblin_eye.get_market_depth',status:'completed',raw_result:fixture.depth}])};
  vm.run('WoWAIDB.chats[1].history={{role="assistant",text="Market evidence",research='+P.luaTable('CARD_FIXTURE',[{research}]).match(/research = (.*),\n/)[1]+'}}; WoWAI.Render()');
  const click=label=>vm.run('(function() for _,f in ipairs(STUB.frames) do if f.shown and f.text=='+JSON.stringify(label)+' then f.scripts.OnClick(f); return end end error("button missing") end)()');
+ click('[+] Evidence - 1 cards');
  click('Details');assert.equal(vm.evaluate('(function() for _,f in ipairs(STUB.frames) do if f.evidenceCard and f.body.text:find("Gathering requirement: Unknown",1,true) then return true end end end)()'),'true');
  click('Copy card');assert.ok(vm.evaluate('WoWAICopyBox.text').includes('Source: local-ahledger'));
  click('Tool result');assert.equal(vm.evaluate('WoWAIResearchReader.text'),'FULL PRICE RESULT');
@@ -284,6 +312,8 @@ test('evidence cards page three at a time, collapse and keep cached layouts acro
  const vm=newVM();login(vm);
  vm.run('local cards={}; for i=1,7 do cards[i]={key="card"..i,type="price",title="Item "..i,badge="Listed asks",headline="1g",item_id=i,market_key="local",source_key="test",captured_at="",captured_epoch=0,fields={},notes={},tool_id="tool"} end; WoWAIDB.chats[1].history={{role="assistant",text="shortlist",research={cards=cards,calls={}}}}; WoWAI.Render()');
  const visible=()=>vm.num('(function() local n=0; for _,f in ipairs(STUB.frames) do if f.evidenceCard and f.shown then n=n+1 end end return n end)()');
+ assert.equal(visible(),0);
+ vm.run('(function() for _,f in ipairs(STUB.frames) do if f.text=="[+] Evidence - 7 cards" then f.scripts.OnClick(f); return end end end)()');
  assert.equal(visible(),3);
  vm.run('(function() for _,f in ipairs(STUB.frames) do if f.text=="Cards >" then f.scripts.OnClick(f); return end end end)()');
  assert.equal(vm.num('WoWAIDB.chats[1].history[1].evidencePage'),2);assert.equal(visible(),3);
@@ -307,6 +337,7 @@ test('evidence capture labels distinguish exact scans, date-only aggregates and 
 test('Read full reply resets a disabled card-paging button when a bubble is reused',()=>{
  const vm=newVM();login(vm);
  vm.run('local cards={}; for i=1,4 do cards[i]={key="card"..i,type="price",title="Item",badge="Listed asks",headline="1g",item_id=i,market_key="local",source_key="test",captured_at="",captured_epoch=0,fields={},notes={},tool_id="tool"} end; WoWAIDB.chats[1].history={{role="system",text="short",research={cards=cards,calls={}}}}; WoWAI.Render()');
+ vm.run('(function() for _,f in ipairs(STUB.frames) do if f.text=="[+] Evidence - 4 cards" then f.scripts.OnClick(f); return end end end)()');
  assert.equal(vm.evaluate('(function() for _,f in ipairs(STUB.frames) do if f.text=="< Cards" then return f:IsEnabled() end end end)()'),'false');
  vm.run('WoWAIDB.chats[1].history={{role="assistant",text=string.rep("long reply ",800)}}; WoWAI.Render()');
  assert.equal(vm.evaluate('(function() for _,f in ipairs(STUB.frames) do if f.text=="Read full reply" then if not f:IsEnabled() then error("disabled") end; f.scripts.OnClick(f); return true end end end)()'),'true');
@@ -957,4 +988,55 @@ test('the minimized eye opens on click, stays minimized during drag, and sends n
  vm.run('WoWAIMini.scripts.OnDragStop(WoWAIMini);STUB.RunTimers();WoWAIMini.scripts.OnMouseUp(WoWAIMini,"LeftButton")');
  assert.equal(vm.evaluate('WoWAIFrame.shown'),'true');assert.equal(vm.evaluate('WoWAIMini.shown'),'false');
  assert.equal(stripRecords(vm).length,records);
+});
+test('chat sidebar toggles without changing the draft or sending, and restores its saved preference',()=>{
+ const vm=newVM();vm.run('WoWAIDB={settings={sidebarHidden=true}}');login(vm);connect(vm);
+ vm.run('for _,f in ipairs(STUB.frames) do if f.text=="+ New chat" then SIDEBAR=f.parent end end');
+ assert.equal(vm.evaluate('SIDEBAR.shown'),'false');assert.equal(vm.evaluate('WoWAISidebarToggle.text'),'>');
+ vm.run('WoWAIInput:SetText("Keep my draft")');const before=stripRecords(vm);
+ vm.run('WoWAISidebarToggle.scripts.OnClick()');
+ assert.equal(vm.evaluate('SIDEBAR.shown'),'true');assert.equal(vm.evaluate('WoWAIDB.settings.sidebarHidden'),'false');
+ vm.run('WoWAIChatMenu:Show();WoWAISidebarToggle.scripts.OnClick()');
+ assert.equal(vm.evaluate('SIDEBAR.shown'),'false');assert.equal(vm.evaluate('WoWAIChatMenu.shown'),'false');
+ assert.equal(vm.evaluate('WoWAIDB.settings.sidebarHidden'),'true');assert.equal(vm.evaluate('WoWAIInput.text'),'Keep my draft');assert.deepEqual(stripRecords(vm),before);
+});
+test('eye gaze is bounded and centered without changing the eye position',()=>{
+ const vm=newVM();login(vm);vm.run('GX,GY=WoWAI.EyeGaze(0,0)');assert.equal(vm.num('GX'),0);assert.equal(vm.num('GY'),0);
+ vm.run('GX,GY=WoWAI.EyeGaze(100000,-100000)');assert.ok(vm.num('GX')>0&&vm.num('GX')<=0.035);assert.ok(vm.num('GY')<0&&vm.num('GY')>=-0.026);
+ vm.run('WoWAI.Minimize(true);EX,EY=WoWAIMini.x,WoWAIMini.y;for _,fn in ipairs(WoWAIMini.hooks.OnUpdate) do fn(WoWAIMini,0.04) end; for _,t in ipairs(WoWAIMini.textures) do if t.mask then IRIS=t end end');
+ assert.ok(Math.abs(vm.num('IRIS.coords[1]')-0.225)<0.00001);assert.equal(vm.num('IRIS.coords[3]'),0.287);
+ assert.equal(vm.evaluate('EX==WoWAIMini.x and EY==WoWAIMini.y'),'true');
+});
+test('prompt library categories scope search and clear unrelated previews without sending',()=>{
+ const vm=newVM();login(vm);connect(vm);const before=stripRecords(vm);
+ vm.run('WoWAI.ShowPromptLibrary();WoWAIPromptLibrary.categories[4].scripts.OnClick(WoWAIPromptLibrary.categories[4])');
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.category'),'Gold & farming');
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.count.text'),'5 prompts - page 1 / 1');
+ vm.run('WoWAIPromptLibrary.rows[1].scripts.OnClick(WoWAIPromptLibrary.rows[1]);WoWAIPromptLibrary.categories[3].scripts.OnClick(WoWAIPromptLibrary.categories[3])');
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.selected'),null);
+ vm.run('WoWAIPromptSearch:SetText("opportunity lab");WoWAIPromptSearch.scripts.OnTextChanged()');
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.count.text'),'0 prompts - page 1 / 1');
+ vm.run('WoWAIPromptLibrary.categories[1].scripts.OnClick(WoWAIPromptLibrary.categories[1])');
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.count.text'),'1 prompts - page 1 / 1');
+ assert.deepEqual(stripRecords(vm),before);
+});
+test('prompt library browses locally, previews full text and appends without sending',()=>{
+ const vm=newVM();login(vm);connect(vm);const before=stripRecords(vm);
+ vm.run('WoWAI.ShowPromptLibrary()');
+ assert.equal(vm.num('#WoWAI.PromptLibrary'),28);
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.count.text'),'28 prompts - page 1 / 5');
+ vm.run('WoWAIPromptLibrary.next.scripts.OnClick()');assert.equal(vm.evaluate('WoWAIPromptLibrary.rows[1].prompt.title'),'Should I replace this item?');
+ vm.run('WoWAIPromptSearch:SetText("opportunity lab");WoWAIPromptSearch.scripts.OnTextChanged()');
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.count.text'),'1 prompts - page 1 / 1');
+ vm.run('WoWAIPromptLibrary.rows[1].scripts.OnClick(WoWAIPromptLibrary.rows[1])');
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.body.text==WoWAIPromptLibrary.selected.text'),'true');
+ assert.ok(vm.evaluate('WoWAIPromptLibrary.body.text').includes('MY REQUEST'));
+ assert.deepEqual(stripRecords(vm),before);
+ vm.run('WoWAIInput:SetText("My existing context");WoWAIPromptLibrary.use.scripts.OnClick()');
+ assert.ok(vm.evaluate('WoWAIInput.text').startsWith('My existing context\n\n'));
+ assert.ok(vm.evaluate('WoWAIInput.text').includes('Run an opportunity lab'));
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.shown'),'false');
+ assert.equal(vm.evaluate('WoWAIDB.chats[1].pendingId'),null);assert.deepEqual(stripRecords(vm),before);
+ vm.run('WoWAI.ShowPromptLibrary();WoWAIPromptSearch:SetText("no-such-prompt-12345");WoWAIPromptSearch.scripts.OnTextChanged()');
+ assert.equal(vm.evaluate('WoWAIPromptLibrary.use.enabled'),'false');assert.equal(vm.evaluate('WoWAIPromptLibrary.rows[1].shown'),'false');
 });

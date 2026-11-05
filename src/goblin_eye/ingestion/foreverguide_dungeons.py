@@ -17,12 +17,27 @@ from .professiondb import positive_id
 SOURCE_KEY = "foreverguide-dungeons"
 SOURCE_URL = "https://www.curseforge.com/wow/addons/forever-guide"
 LIMITATIONS = (
-    "Forever dungeon loot comes from the package's foreverchanges.pro assertions; new-item rows do not provide drop probability or output quantity.",
+    "Dungeon loot is an installed package assertion; Classic loot/rates remain baselines, and new-item rows do not establish drop probability or output quantity.",
     "Only bosses with a real NPC ID can form item-to-NPC edges; name-only Forever bosses remain retained in the cached source and coverage counts.",
     "Quest rewards are imported as Forever evidence only when the source reward table explicitly sets fv=true; eligibility and current phase availability remain unverified.",
     "Baseline loot rows are separate classic_baseline edges, not verified Forever drops; cached probabilities are not promoted to current drop rates.",
     "Name-only n: quest placeholders have no game quest ID; they remain in cached source documents and coverage counts, without fabricated quest links.",
 )
+
+
+def loot_provenance(text):
+    header = text.splitlines()[0] if text else ''
+    if 'foreverchanges.pro boss loot' in text[:200]:
+        return {'header': header, 'classic_basis': 'foreverchanges.pro',
+                'forever_observed_on': None, 'forever_game_build': None}
+    observed = re.fullmatch(
+        r'-- Classic loot/rates from ForeverChanges; new dungeon observations refreshed '
+        r'(\d{4}-\d{2}-\d{2}), build (\d+)\.', header)
+    if not observed:
+        raise ValueError('Forever Guide dungeon provenance changed')
+    datetime.strptime(observed[1], '%Y-%m-%d')
+    return {'header': header, 'classic_basis': 'ForeverChanges',
+            'forever_observed_on': observed[1], 'forever_game_build': observed[2]}
 
 
 def parse_foreverguide_dungeons(root: Path) -> dict:
@@ -35,7 +50,8 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
         raise ValueError("Unreviewed Forever Guide dungeon interface")
     loot_text = files["DungeonLoot.lua"].decode("utf-8-sig")
     data_text = files["DungeonData.lua"].decode("utf-8-sig")
-    if "foreverchanges.pro boss loot" not in loot_text[:200] or "QuestieDB (Forever) + foreverchanges.pro" not in data_text[:200]:
+    provenance = loot_provenance(loot_text)
+    if "QuestieDB (Forever) + foreverchanges.pro" not in data_text[:200]:
         raise ValueError("Forever Guide dungeon provenance changed")
     if "rw and rw.fv" not in files["Dungeons.lua"].decode("utf-8-sig") or "fv = q.rw.fv" not in files["ItemSearch.lua"].decode("utf-8-sig"):
         raise ValueError("Forever Guide reward-label consumer semantics changed")
@@ -125,12 +141,12 @@ def parse_foreverguide_dungeons(root: Path) -> dict:
     for item_id, name in item_names.items():
         entities[("item", item_id)] = (name, {"loot_catalog_name_only": True}, f"DungeonLoot.lua#item/{item_id}")
     hashes = {name: hashlib.sha256(body).hexdigest() for name, body in files.items()}
-    fingerprint = hashlib.sha256(json.dumps({'files':hashes,'parser':3}, sort_keys=True).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps({'files':hashes,'parser':4}, sort_keys=True).encode()).hexdigest()
     entity_rows = tuple((kind, entity_id, name, json.dumps(attributes, ensure_ascii=False), raw)
                         for (kind, entity_id), (name, attributes, raw) in entities.items())
     return {"root": root, "files": files, "hashes": hashes, "fingerprint": fingerprint,
             "version": version.group(1).strip(), "entities": entity_rows, "edges": tuple(edges),
-            "labels":labels,"memberships":memberships,
+            "labels":labels,"memberships":memberships,"loot_provenance":provenance,
             "counts": {"new_loot_rows": new_loot_rows, "name_only_bosses": name_only_bosses,
                        "verified_quests": verified_quests, "verified_reward_rows": verified_reward_rows,
                        "name_only_quests": name_only_quests}}
@@ -147,7 +163,7 @@ class ForeverGuideDungeonAdapter:
     def import_file(self, database: Database, path: Path) -> ImportResult:
         data = parse_foreverguide_dungeons(path)
         now = datetime.now(timezone.utc).isoformat()
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?, 'Forever Guide dungeon overrides', 'bundled_acquisition_database', ?, 4, ?, ?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
@@ -164,6 +180,9 @@ class ForeverGuideDungeonAdapter:
             manifest = {name: {"path": str(data["root"] / name), "sha256": data["hashes"][name], "bytes": len(body)}
                         for name, body in data["files"].items()}
             manifest["coverage"] = data["counts"]
+            # This build/date applies to the provider's new-loot observations,
+            # never to the Classic baseline rows or our import timestamp.
+            manifest["loot_provenance"] = data["loot_provenance"]
             cursor = connection.execute("""INSERT INTO research_datasets(source_id,dataset_key,sha256,source_version,game_build,
                 content_phase,retrieved_at,confidence,evidence_kind,manifest_json,limitations_json)
                 VALUES (?,'dungeon-overrides',?,?,NULL,'Forever',?,0.7,'extracted',?,?)""",

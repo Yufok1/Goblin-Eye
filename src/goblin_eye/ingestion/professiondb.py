@@ -214,7 +214,7 @@ class ProfessionDBAdapter:
         now = datetime.now(timezone.utc).isoformat()
         manifest = {name: {"sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body),
                            "path": str(dataset.root / name)} for name, body in sorted(dataset.files.items())}
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key, name, source_type, url, trust_rank, notes, last_success_at)
                 VALUES (?, 'LibProfessionDB Forever', 'client_extracted_addon', ?, 3, ?, ?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at, last_error=NULL""",
@@ -289,7 +289,7 @@ class ProfessionDBWatcher:
                 import logging
                 logging.exception("Source path failed: %s", path)
                 try:
-                    with self.database.transaction() as connection:
+                    with self.database.write_transaction() as connection:
                         connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,last_error)
                             VALUES (?, 'LibProfessionDB Forever', 'client_extracted_addon', ?, 3, ?)
                             ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""", (SOURCE_KEY,SOURCE_URL,str(exc)))
@@ -308,7 +308,7 @@ class ProfessionDBWatcher:
             try:
                 self.scan_once()
             except Exception as exc:
-                with self.database.transaction() as connection:
+                with self.database.write_transaction() as connection:
                     connection.execute("""INSERT INTO sources(source_key, name, source_type, url, trust_rank, last_error)
                         VALUES (?, 'LibProfessionDB Forever', 'client_extracted_addon', ?, 3, ?)
                         ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""", (SOURCE_KEY, SOURCE_URL, str(exc)))
