@@ -55,9 +55,9 @@ local BACKDROP = {
 
 -- The assistant bubble is labelled with the agent that wrote it (see AgentName).
 local ROLE_STYLE = {
-	user      = { label = "You",    color = { 0.49, 0.78, 1.00 }, bg = { 0.25, 0.45, 0.75, 0.16 } },
-	assistant = { label = "AI",     color = { 1.00, 0.82, 0.25 }, bg = { 0.85, 0.70, 0.30, 0.10 } },
-	system    = { label = "System", color = { 0.62, 0.62, 0.62 }, bg = { 0.50, 0.50, 0.50, 0.10 } },
+	user      = { label = "You",    color = { 0.76, 0.64, 0.98 }, bg = { 0.11, 0.075, 0.16, 0.96 } },
+	assistant = { label = "AI",     color = { 0.76, 0.97, 0.46 }, bg = { 0.065, 0.09, 0.055, 0.97 } },
+	system    = { label = "System", color = { 0.73, 0.69, 0.62 }, bg = { 0.085, 0.075, 0.07, 0.96 } },
 }
 
 ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ local function InitDB()
 	local s = db.settings
 	s.autoRefresh = false -- Research companion: reload only from its explicit controls.
 	if s.signal == nil then s.signal = true end
-	if s.context == nil then s.context = true end -- tell the agent about the character, zone, etc.
+	s.context = false -- research context is retrieved through files-only MCP tools
 	-- How much of each reply to print in the game chat. "summary" (the agent's
 	-- closing TL;DR lines) replaced "full" as the default; an install that still
 	-- has the old default saved moves over once, any other choice is kept.
@@ -808,7 +808,7 @@ local function TryLoadSlot(why)
 		if type(data.agents) == "table" and #data.agents > 0 then run.bridgeAgents = data.agents end
 	end
 	local matched = ApplyReplies(type(data) == "table" and data.replies or nil)
-	if type(data) == "table" and type(data.model_catalogs) == "table" then run.catalogs = data.model_catalogs; if WoWAI.RefreshChatSettings then WoWAI.RefreshChatSettings() end end
+	if type(data) == "table" and type(data.model_catalogs) == "table" then WoWAI.ReceiveModelCatalogs(data.model_catalogs) end
 	if type(data) == "table" and type(data.speech) == "table" then run.speech = data.speech; if WoWAI.RefreshVoiceSettings then WoWAI.RefreshVoiceSettings() end end
 	if type(data) == "table" then
 		for _, a in ipairs(data.speech_acks or {}) do
@@ -840,6 +840,7 @@ local function Tick()
 	WoWAI.UpdateDot()
 	WoWAI.CheckConnection()
 	if db.settings.mode ~= "pixel" then return end
+	if WoWAI.PollSettingsCatalogs then WoWAI.PollSettingsCatalogs() end
 	if run.voicePollAt and now >= run.voicePollAt then run.voicePollAt = nil; TryLoadSlot("voice") end
 	-- Speech finishes after its Play control has already been acknowledged.
 	-- Continue bounded polling while it is busy so late phase/completion updates
@@ -938,7 +939,7 @@ local function ProcessInbox()
 	if type(inbox.agent) == "string" and inbox.agent ~= "" then run.bridgeAgent = inbox.agent end
 	if type(inbox.agents) == "table" and #inbox.agents > 0 then run.bridgeAgents = inbox.agents end
 	if type(inbox.speech) == "table" then run.speech = inbox.speech end
-	if type(inbox.model_catalogs) == "table" then run.catalogs = inbox.model_catalogs end
+	if type(inbox.model_catalogs) == "table" then WoWAI.ReceiveModelCatalogs(inbox.model_catalogs) end
 	ApplyControlAcks(inbox)
 	ApplyReplies(inbox.replies)
 	if inbox.restore then ImportRestore(inbox.restore) end
@@ -1041,120 +1042,9 @@ function WoWAI.SkillLines()
 end
 
 function WoWAI.GameContext()
-	local lines = {}
-	local version, build, _, toc = Try(GetBuildInfo)
-	toc = tonumber(toc)
-	local game = "World of Warcraft"
-	if toc and toc >= 16000 and toc < 20000 then game = "World of Warcraft: Forever" end
-	local client = ""
-	if version then
-		client = " (client " .. tostring(version) .. (build and ("." .. tostring(build)) or "") .. (toc and (", interface " .. toc) or "") .. ")"
-	end
-	table.insert(lines, "Game: " .. game .. client)
-
-	local name = Try(UnitName, "player")
-	if name then
-		local realm = Try(GetRealmName)
-		local level = Try(UnitLevel, "player")
-		local race = Try(UnitRace, "player")
-		local class = Try(UnitClass, "player")
-		local faction = Try(UnitFactionGroup, "player")
-		local guild = Try(GetGuildInfo, "player")
-		local who = "Character: " .. tostring(name) .. (realm and (" on " .. tostring(realm)) or "")
-		local desc = {}
-		if level then table.insert(desc, "level " .. tostring(level)) end
-		if race then table.insert(desc, tostring(race)) end
-		if class then table.insert(desc, tostring(class)) end
-		if #desc > 0 then who = who .. ", " .. table.concat(desc, " ") end
-		if faction then who = who .. " (" .. tostring(faction) .. ")" end
-		if guild then who = who .. ", guild <" .. tostring(guild) .. ">" end
-		table.insert(lines, who)
-	end
-
-	local zone = Try(GetZoneText)
-	local sub = Try(GetSubZoneText)
-	if zone and zone ~= "" then
-		table.insert(lines, "Location: " .. zone .. ((sub and sub ~= "" and sub ~= zone) and (" - " .. sub) or ""))
-	end
-
-	-- Map coordinates, as the minimap shows them (0-100 across the current map;
-	-- addons get no world x/y/z). Modern C_Map first, the vanilla call as fallback.
-	local x, y, mapName
-	local mapId = Try(C_Map and C_Map.GetBestMapForUnit, "player")
-	if type(mapId) == "number" then
-		local pos = Try(C_Map.GetPlayerMapPosition, mapId, "player")
-		if type(pos) == "table" and type(pos.x) == "number" and type(pos.y) == "number" then x, y = pos.x, pos.y end
-		local info = Try(C_Map.GetMapInfo, mapId)
-		if type(info) == "table" and type(info.name) == "string" then mapName = info.name end
-	end
-	if not x then
-		local px, py = Try(GetPlayerMapPosition, "player")
-		if type(px) == "number" and type(py) == "number" then x, y = px, py end
-	end
-	if x and y and (x > 0 or y > 0) then
-		local where = (mapName and mapName ~= zone) and (" on " .. mapName) or ""
-		table.insert(lines, string.format("Position: %.1f, %.1f%s%s", x * 100, y * 100, where, mapId and (" (map " .. mapId .. ")") or ""))
-	end
-
-	local progress = {}
-	local copper = Try(GetMoney)
-	if copper then table.insert(progress, "Money: " .. Money(copper)) end
-	local xp, xpMax = Try(UnitXP, "player"), Try(UnitXPMax, "player")
-	if type(xp) == "number" and type(xpMax) == "number" and xpMax > 0 then
-		table.insert(progress, "XP: " .. xp .. "/" .. xpMax)
-	end
-	if #progress > 0 then table.insert(lines, table.concat(progress, "; ")) end
-
-	-- Classic-style talent tabs: name, icon, points spent.
-	local tabs = Try(GetNumTalentTabs)
-	if type(tabs) == "number" and tabs > 0 then
-		local parts = {}
-		for i = 1, tabs do
-			local tname, _, points = Try(GetTalentTabInfo, i)
-			if type(tname) == "string" and type(points) == "number" then
-				table.insert(parts, tname .. " " .. points)
-			end
-		end
-		if #parts > 0 then table.insert(lines, "Talents: " .. table.concat(parts, " / ")) end
-	end
-
-	-- Skill lines under the Professions and Secondary Skills headers.
-	local header, parts = nil, {}
-	local wanted = { [TRADE_SKILLS or "Professions"] = true, [SECONDARY_SKILLS or "Secondary Skills"] = true }
-	for _, sk in ipairs(WoWAI.SkillLines()) do
-		if sk.isHeader then
-			header = sk.name
-		elseif (header and wanted[header]) or PROFESSION_SKILL_IDS[sk.skillID] then
-			table.insert(parts, sk.name .. (sk.rank and (" " .. tostring(sk.rank) .. (sk.maxRank and ("/" .. tostring(sk.maxRank)) or "")) or ""))
-		end
-	end
-	if #parts > 0 then table.insert(lines, "Professions: " .. table.concat(parts, ", ")) end
-
-	-- Quest log ids (what is accepted, and which are done), so route planning can
-	-- skip pickups and turn-ins that no longer apply.
-	local quests = {}
-	local qn = Try(C_QuestLog and C_QuestLog.GetNumQuestLogEntries) or Try(GetNumQuestLogEntries)
-	if type(qn) == "number" then
-		for i = 1, math.min(qn, 40) do
-			local id, header, complete
-			local info = Try(C_QuestLog and C_QuestLog.GetInfo, i)
-			if type(info) == "table" then
-				id, header = info.questID, info.isHeader
-				complete = Try(C_QuestLog.IsComplete, id)
-			else
-				local _, _, _, isHeader, _, isComplete, _, qid = Try(GetQuestLogTitle, i)
-				id, header, complete = qid, isHeader, isComplete == 1 or isComplete == true
-			end
-			if not header and type(id) == "number" and id > 0 then
-				table.insert(quests, tostring(id) .. (complete and "*" or ""))
-			end
-		end
-	end
-	if #quests > 0 then table.insert(lines, "Quest log (id, * = ready to turn in): " .. table.concat(quests, ",")) end
-
-	local s = table.concat(lines, "\n"):gsub("[\30\31]", " ")
-	if #s > CONTEXT_MAX then s = s:sub(1, CONTEXT_MAX) end
-	return s
+	-- Conversation transport only. Research reads saved addon files through MCP.
+	-- Keep the empty value so hello clears context cached by older bridges.
+	return ""
 end
 
 -- The context to put on the next record, or nil when the bridge already has
@@ -1374,24 +1264,57 @@ end
 function WoWAI.SpeechInfo()
 	return run.speech or { enabled = false, mode = "summary", volume = 70, rate = 0, voice = "", error = "Connect to refresh voice status." }
 end
+function WoWAI.ReceiveModelCatalogs(catalogs)
+ db.modelCatalogs = db.modelCatalogs or {}
+ for _, v in ipairs(catalogs or {}) do
+  -- Never mistake a legacy ten-row response for a complete catalog.
+  if v.complete and type(v.agent) == "string" then
+   local old = db.modelCatalogs[v.agent]
+   if v.status == "ready" or not old or old.status ~= "ready" then db.modelCatalogs[v.agent] = v
+   elseif v.status == "error" then old.error = v.error end
+  end
+ end
+ if WoWAI.RefreshChatSettings then WoWAI.RefreshChatSettings() end
+end
+function WoWAI.InsertPromptDraft(text)
+ local c=ActiveChat();if not c or type(text)~="string" or text=="" then return end
+ local previous=ui.input and ui.input:GetText() or c.draft or ""
+ local draft=previous..(previous~="" and "\n\n" or "")..text
+ WoWAI.Toggle(true)
+ c.draft=nil;ui.input:SetText(draft);ui.input:SetFocus()
+end
 function WoWAI.ChatSettingsContext(id)
  local c = id and FindChat(id) or ActiveChat()
+ local agent = ChatAgent(c)
+ local source = db and db.modelCatalogs and db.modelCatalogs[agent]
  local view
- for _, v in ipairs(run.catalogs or {}) do if c and v.chat == c.id and v.agent == ChatAgent(c) then view = v end end
- return c, db and db.settings, view, run.bridgeAgents or {}, ChatAgent(c), run.bridgeAgent
+ if source then
+  view = {}; for k,v in pairs(source) do view[k] = v end
+  local filter = run.modelFilters and c and run.modelFilters[c.id] or {}
+  local query = string.lower(filter.query or "")
+  local items = {}
+  for _, m in ipairs(source.items or {}) do
+   if c and m.id == (c.model or source.default_model) then view.selected = m end
+   if (not filter.free or m.free) and (query == "" or string.find(string.lower(m.id .. " " .. m.name .. " " .. (m.description or "")), query, 1, true)) then items[#items+1] = m end
+  end
+  table.sort(items,function(a,b) if a.free ~= b.free then return a.free == true end; if a.name == b.name then return a.id < b.id end; return a.name < b.name end)
+  view.total = #items; view.pages = math.max(1,math.ceil(#items/10)); view.page = math.min(view.pages,filter.page or 1)
+  view.items = {}; for i=(view.page-1)*10+1,math.min(view.page*10,#items) do view.items[#view.items+1] = items[i] end
+ end
+ return c, db and db.settings, view, run.bridgeAgents or {}, agent, run.bridgeAgent
 end
 function WoWAI.RequestModels(id, query, page, refresh, free)
  local c = id and FindChat(id) or ActiveChat(); if not c then return end
- if db.settings.mode == "reload" and AnyPending() then print("WoWAI: wait for the pending reply before refreshing models in reload mode."); return end
- local payload = '{"agent":' .. JSONString(ChatAgent(c)) .. ',"query":' .. JSONString(tostring(query or ""):sub(1,100)) .. ',"selected":' .. JSONString(c.model) .. ',"page":' .. tostring(math.max(1, math.floor(tonumber(page) or 1))) .. ',"refresh":' .. (refresh and 'true' or 'false') .. ',"free":' .. (free and 'true' or 'false') .. '}'
- db.lastSeq = db.lastSeq + 1
- if db.settings.mode == "reload" then
-  db.outbox = {id=db.lastSeq, session=db.session, chat=c.id, text=ToHex(payload), cwd=ToHex(c.cwd or ""), models=true}; SafeReload()
- else
-  run.outbound[db.lastSeq] = {chat=c.id,cwd=c.cwd,flags="models",name=c.name,text=payload,sentAt=GetTime(),models=true}
-  run.modelsPollAt = GetTime()+28; RefreshStrip()
- end
- return db.lastSeq
+ run.modelFilters = run.modelFilters or {}
+ run.modelFilters[c.id] = {query=tostring(query or ""):sub(1,100),page=math.max(1,math.floor(tonumber(page) or 1)),free=free==true}
+ -- Reading an already-written inbound slot never emits a strip record.
+ if refresh then WoWAI.SyncModelCatalogs() end
+end
+function WoWAI.SyncModelCatalogs()
+ if db.settings.mode ~= "pixel" then return end
+ if GetTime() < (run.nextCatalogRead or 0) then return end
+ run.nextCatalogRead = GetTime()+10
+ TryLoadSlot("catalogs")
 end
 function WoWAI.Voice(op, value, chatId)
 	local allowed = { on=true, off=true, stop=true, summary=true, full=true, volume=true, rate=true, name=true, character=true, status=true, listen=true, listenfull=true, preview=true }
@@ -2049,6 +1972,7 @@ local function GetBubble(i)
 	b:SetScript("OnMouseUp", function(self, button)
 		if button == "LeftButton" and self.text and self.text ~= "" then WoWAI.ShowCopy(self.text) end
 	end)
+	if WoWAI.ThemeBubble then WoWAI.ThemeBubble(b) end
 	ui.bubbles[i] = b
 	return b
 end
@@ -2119,6 +2043,7 @@ function WoWAI.Render()
 				if not mb then
 					mb = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
 					mb:SetHeight(22)
+					if WoWAI.SkinButton then WoWAI.SkinButton(mb) end
 					mb:SetScript("OnClick", function(self) WoWAI.InstallMacro(self.macro) end)
 					mb:SetScript("OnEnter", function(self)
 						GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -2502,10 +2427,32 @@ local function MakeButton(parent, label, width, onClick)
 	b:SetSize(width, 22)
 	b:SetText(label)
 	b:SetScript("OnClick", onClick)
+	if WoWAI.SkinButton then WoWAI.SkinButton(b) end
 	return b
 end
 
 local PANEL_W = 150
+function WoWAI.ApplySidebarLayout()
+ if not ui.panel or not ui.scroll or not ui.inputBg then return end
+ local hidden=db.settings.sidebarHidden==true
+ ui.panel:SetShown(not hidden)
+ if hidden and WoWAIChatMenu then WoWAIChatMenu:Hide() end
+ ui.sidebarToggle:ClearAllPoints()
+ ui.sidebarToggle:SetPoint("TOPLEFT",ui.frame,"TOPLEFT",hidden and 14 or 140,-68)
+ ui.sidebarToggle:SetText(hidden and ">" or "<")
+ ui.scroll:ClearAllPoints()
+ if hidden then ui.scroll:SetPoint("TOPLEFT",ui.frame,"TOPLEFT",44,-64)
+ else ui.scroll:SetPoint("TOPLEFT",ui.panel,"TOPRIGHT",8,0) end
+ ui.scroll:SetPoint("BOTTOMRIGHT",ui.frame,"BOTTOMRIGHT",-32,110)
+ ui.inputBg:ClearAllPoints()
+ if hidden then ui.inputBg:SetPoint("BOTTOMLEFT",ui.frame,"BOTTOMLEFT",14,50)
+ else ui.inputBg:SetPoint("BOTTOMLEFT",ui.panel,"BOTTOMRIGHT",8,0) end
+ ui.inputBg:SetPoint("BOTTOMRIGHT",ui.frame,"BOTTOMRIGHT",-104,50)
+end
+function WoWAI.ToggleSidebar()
+ db.settings.sidebarHidden=not db.settings.sidebarHidden
+ WoWAI.ApplySidebarLayout();WoWAI.Render()
+end
 
 local function BuildUI()
 	if ui.frame then return end
@@ -2627,6 +2574,7 @@ local function BuildUI()
 	panel:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -52)
 	panel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 14, 50)
 	panel:SetWidth(PANEL_W)
+	ui.panel = panel
 	panel:SetBackdrop({
 		bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2636,8 +2584,15 @@ local function BuildUI()
 	panel:SetBackdropColor(0, 0, 0, 0.4)
 	panel:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
 
-	local newBtn = MakeButton(panel, "+ New chat", PANEL_W - 16, function() WoWAI.NewChat() end)
-	newBtn:SetPoint("TOP", panel, "TOP", 0, -8)
+	local newBtn = MakeButton(panel, "+ New chat", PANEL_W - 42, function() WoWAI.NewChat() end)
+	newBtn:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -8)
+	local sidebarToggle=CreateFrame("Button","WoWAISidebarToggle",f,"UIPanelButtonTemplate")
+	sidebarToggle:SetSize(20,24);sidebarToggle:SetScript("OnClick",WoWAI.ToggleSidebar)
+	sidebarToggle:SetScript("OnEnter",function(self)
+		GameTooltip:SetOwner(self,"ANCHOR_RIGHT");GameTooltip:SetText(db.settings.sidebarHidden and "Show chat list" or "Hide chat list");GameTooltip:Show()
+	end)
+	sidebarToggle:SetScript("OnLeave",function()GameTooltip:Hide()end)
+	ui.sidebarToggle=sidebarToggle
 
 	-- Per-chat menu: Rename, Folder and Agent, opened by right-clicking a chat
 	-- row. A plain frame of our own rather than a Blizzard dropdown, so it looks
@@ -2793,6 +2748,7 @@ local function BuildUI()
 	inputBg:SetPoint("BOTTOMLEFT", panel, "BOTTOMRIGHT", 8, 0)
 	inputBg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14 - SEND_W - 6, 50)
 	inputBg:SetHeight(54)
+	ui.inputBg = inputBg
 	inputBg:SetBackdrop({
 		bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
 		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -2881,6 +2837,8 @@ local function BuildUI()
 	ui.resend = resend
 	local settingsButton = MakeButton(f, "Settings", 80, function() if WoWAI.ShowChatSettings then WoWAI.ShowChatSettings() end end)
 	settingsButton:SetPoint("LEFT", resend, "RIGHT", 6, 0)
+	local promptsButton = MakeButton(f, "Prompts", 80, function() if WoWAI.ShowPromptLibrary then WoWAI.ShowPromptLibrary() end end)
+	promptsButton:SetPoint("LEFT", settingsButton, "RIGHT", 6, 0)
 
 	-- A named, always-present button so a keybinding can click it (see /wow-ai bind).
 	local hotkey = CreateFrame("Button", "WoWAIRefreshButton", UIParent)
@@ -2956,6 +2914,7 @@ local function BuildUI()
 	local mlabel = m:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	mlabel:SetPoint("LEFT", miniDotHolder, "RIGHT", 6, 0)
 	mlabel:SetText("WoW AI")
+	ui.miniLabel = mlabel
 
 	local badge = m:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	badge:SetPoint("LEFT", mlabel, "RIGHT", 8, 0)
@@ -2983,6 +2942,7 @@ local function BuildUI()
 
 	local mclose = CreateFrame("Button", nil, m, "UIPanelCloseButton")
 	mclose:SetSize(24, 24)
+	ui.miniClose = mclose
 	mclose:SetPoint("RIGHT", m, "RIGHT", -2, 0)
 	mclose:SetScript("OnClick", function() WoWAI.Toggle(false) end)
 	mclose:SetScript("OnEnter", function(self)
@@ -2991,6 +2951,8 @@ local function BuildUI()
 		GameTooltip:Show()
 	end)
 	mclose:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	if WoWAI.ApplyGoblinTheme then WoWAI.ApplyGoblinTheme(f, ui) end
+	WoWAI.ApplySidebarLayout()
 end
 
 function WoWAI.Toggle(show)
@@ -3191,19 +3153,11 @@ SlashCmdList["WOWAI"] = function(msg)
 		WoWAI.Render()
 		WoWAI.Toggle(true)
 	elseif cmd == "context" or cmd == "ctx" then
-		rest = rest:lower()
-		if rest == "on" or rest == "off" then
-			s.context = rest == "on"
-			-- Make sure the next record carries the change, hello throttle or not.
-			run.contextSent = nil
-			run.lastHelloAt = nil
-			if WoWAI.IsConnected() then WoWAI.SayHello() end
-		end
-		local ctx = WoWAI.GameContext()
-		AddHistory(c, "system", (s.context
-			and "Game context is ON: the agent is told this with each message (it goes into its system prompt, so unrelated projects are unaffected by anything but a few lines). /wow-ai context off to stop.\n\n"
-			or "Game context is OFF: the agent is told nothing about the game. /wow-ai context on to send this:\n\n") .. ctx
-			.. "\n\nTip: click the input box, then shift-click an item, spell or quest to link it into your message; the agent gets its tooltip.")
+		s.context = false
+		run.contextSent = nil
+		run.lastHelloAt = nil
+		if WoWAI.IsConnected() then WoWAI.SayHello() end
+		AddHistory(c, "system", "Research context comes from saved addon files through Goblin Eye MCP. WoWAI carries your conversation; automatic game context is disabled.")
 		WoWAI.Render()
 		WoWAI.Toggle(true)
 	elseif cmd == "mode" then

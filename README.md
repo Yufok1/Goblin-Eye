@@ -57,7 +57,7 @@ Already installed them through CurseForge? Keep that setup and continue to
 | [AHledger](https://www.curseforge.com/wow/addons/ahledger) | Your saved individual auction listings | Open the auction house and let its scan finish; `/ahl status` shows its scan status. |
 | [LibProfessionDB](https://www.curseforge.com/wow/addons/libprofessiondb) — folder name `ProfessionDB` | Recipe ingredients and profession requirements | Install the Forever-compatible package. No in-game scan needed for its static catalog. |
 | [Forever Guide](https://www.curseforge.com/wow/addons/forever-guide) | Static item sources, recipes, dungeon loot and verified reward references | Install it. Its supported catalogs import automatically. |
-| [Questie](https://www.curseforge.com/wow/addons/questie) | In-game quest helper; Goblin Eye reads its separate QuestieDB dependency below | Install the Forever-compatible release and keep its required dependency installed. |
+| [Questie](https://www.curseforge.com/wow/addons/questie) | Saved personal quest completion; static world references come from QuestieDB below | Install the Forever-compatible release and keep its required dependency installed. |
 | QuestieDB — Questie's required database | NPC/object spawn and waypoint references | Keep the database installed with the Forever-compatible Questie package. It is listed separately here because this is the data Goblin Eye imports. |
 | [Mapzeroth](https://www.curseforge.com/wow/addons/mapzeroth) | Static travel nodes and connections | Install the **Forever** release. No in-game scan needed for the imported travel catalog. |
 
@@ -82,6 +82,8 @@ without any addons installed.
    **Saved scan overview**. Personal saves are checked every few seconds;
    static addon catalogs are checked every minute. Large first imports can
    take longer.
+
+For exact item variants, the dashboard extends your existing Alts Forever installation with a small observation export. Restart WoW after its first setup, then save with `/reload`. Numeric stats are captured for encountered full links, including unequipped items; unseen variants stay unknown. See [gear research and coverage](docs/GEAR_RESEARCH.md).
 
 **There are no manual import commands to run.** Keep the dashboard running;
 supported saved files and changed static catalogs import automatically.

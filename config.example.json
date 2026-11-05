@@ -30,5 +30,7 @@
   "local_faction": "unknown",
   "local_ruleset": "unknown",
   "local_region": "unknown",
-  "local_realm": "unknown"
+  "local_realm": "unknown",
+  "auto_import_questie_saved": true,
+  "questie_saved_paths": []
 }

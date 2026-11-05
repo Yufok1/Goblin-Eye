@@ -1,4 +1,4 @@
-"""Read inspected Alts Forever 0.9.1 SavedVariables v2; never execute Lua."""
+"""Read inspected Alts Forever SavedVariables v2 and the optional numeric export."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -13,16 +13,17 @@ from goblin_eye.repository import Database
 from .base import AdapterCapability, ImportResult
 from .bounded import read_file, resilient_run
 from .lua_literals import LuaLiteralReader
+from goblin_eye.item_instances import validate_export, import_instances
 
 SOURCE_KEY = "local-alts-forever"
 LIMITATIONS = (
     "Saved addon observations are not live game state; import time is not capture time.",
-    "Alts Forever v2 exports full character names, not realm, race or client build; those fields remain unknown.",
+    "Base Alts Forever v2 omits realm/race/build; the optional character-sheet observation supplies client-reported metadata without establishing auction region or ruleset.",
     "Bank contents require visiting a banker; mail requires opening the mailbox; recipes require opening profession windows.",
     "The character updated timestamp does not independently date each inventory, gear or profession observation. Bank bankAt is retained separately.",
     "Absent fields mean unknown/unscanned. Empty mail alone does not establish a complete mailbox survey.",
     "Item links and explicit equipment slots are preserved; enchant and random-suffix interpretations are not verified for this build.",
-    "Talents, quest completion, combat, movement and sale completion are not supplied by this adapter.",
+    "Optional character-sheet and completed-quest observations are timestamped separately. Combat, movement and sale completion are not supplied.",
 )
 
 
@@ -41,7 +42,7 @@ def _counts(value, label):
 
 
 def parse_alts_file(path: Path) -> dict:
-    text = read_file(path, 16 * 1024 * 1024).decode("utf-8-sig")
+    text = read_file(path, 32 * 1024 * 1024).decode("utf-8-sig")
     reader = LuaLiteralReader(text)
     reader.skip()
     reader.expect("AltsForeverDB")
@@ -55,6 +56,7 @@ def parse_alts_file(path: Path) -> dict:
     chars = root.get("chars")
     if not isinstance(chars, dict):
         raise ValueError("Missing characters table")
+    validate_export(root)  # Validate every variant before any database mutation.
     for key, char in chars.items():
         if not isinstance(key, str) or not key.strip() or not isinstance(char, dict):
             raise ValueError("Invalid character identity")
@@ -62,6 +64,8 @@ def parse_alts_file(path: Path) -> dict:
             raise ValueError("Character name/key mismatch or missing class")
         if char.get("faction") not in ("Horde", "Alliance", None):
             raise ValueError("Unreviewed faction")
+        from goblin_eye.character_capture import validate_character_capture
+        validate_character_capture(char)
         _integer(char.get("level"), "level", 1, 1000)
         for field in ("updated", "seen", "playedAt", "bankAt"):
             if char.get(field) is not None:
@@ -87,6 +91,16 @@ def parse_alts_file(path: Path) -> dict:
                 _integer(slot, "equipment slot", 1, 100)
                 if link is not None and (not isinstance(link, str) or not re.search(r"\|Hitem:[1-9]\d*:", link)):
                     raise ValueError("Invalid equipment item link")
+        capture = char.get('goblinEyeGear')
+        if capture is not None:
+            if not isinstance(capture,dict) or not isinstance(capture.get('slots'),dict):
+                raise ValueError('Invalid exported equipment coverage')
+            _integer(capture.get('capturedAt'),'gear capture time',1,253402300799)
+            if set(capture['slots']) != set(range(1,20)):
+                raise ValueError('Equipment coverage must include all 19 explicit slots')
+            if any(v is not False and (not isinstance(v,str) or not re.search(r'\|Hitem:[1-9]\d*:',v))
+                   for v in capture['slots'].values()):
+                raise ValueError('Invalid covered equipment link')
         for field in ("layout", "recipes", "crafts", "reps", "duraSlots"):
             if char.get(field) is not None and not isinstance(char[field], dict):
                 raise ValueError(f"Expected {field} table")
@@ -116,7 +130,7 @@ class AltsForeverAdapter:
         supplies=("character progress", "equipment links and slots", "inventory quantities and layout",
                   "professions", "reputation", "recorded bank/mail/recipes"), needs=("WoW-saved Alts Forever file",),
         documentation_url="https://www.curseforge.com/wow/addons/alts-forever",
-        notes="Inspected installed addon 0.9.1 and a real v2 capture. Missing coverage stays unknown; no game access.")
+        notes="Reviewed saved schema v2 and optional full-link numeric export v1. The base save does not identify the installed addon release. No game access.")
 
     def import_file(self, database: Database, path: Path) -> ImportResult:
         root = parse_alts_file(path)
@@ -124,12 +138,13 @@ class AltsForeverAdapter:
         # Full names are unique only in the addon's account/region context. Never merge accounts by name.
         namespace = hashlib.sha256(str(path.resolve()).casefold().encode()).hexdigest()[:24]
         imported = records = 0
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?,'Alts Forever character observations','local_character_observation',?,1,?,?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
                 (SOURCE_KEY, self.capability.documentation_url, "Saved character evidence; auction workspace is configured separately.", now))
             source_id = connection.execute("SELECT id FROM sources WHERE source_key=?", (SOURCE_KEY,)).fetchone()[0]
+            records += import_instances(connection,namespace,validate_export(root),now,path.resolve().as_uri())
             for name, char in root["chars"].items():
                 body = json.dumps({"schema_version": 2, "character": char, "factions": root.get("factions"),
                                    "recipeInfo": root.get("recipeInfo"), "namespace": namespace},
@@ -142,14 +157,16 @@ class AltsForeverAdapter:
                 digest = hashlib.sha256(json.dumps(canonical(json.loads(body)), ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
                 if connection.execute("SELECT 1 FROM character_snapshots WHERE sha256=?", (digest,)).fetchone():
                     continue
-                captured = (datetime.fromtimestamp(char["updated"], timezone.utc).isoformat()
-                            if char.get("updated") else None)
+                times=[char['updated']] if char.get('updated') else []
+                times.extend(char[k]['capturedAt'] for k in ('goblinEyeCharacter','goblinEyeQuests','goblinEyeGear') if char.get(k))
+                captured = datetime.fromtimestamp(max(times),timezone.utc).isoformat() if times else None
+                identity=char.get('goblinEyeCharacter',{})
                 reference = path.resolve().as_uri() + "#AltsForeverDB/chars/" + name
                 snapshot_id = connection.execute("""INSERT INTO character_snapshots(character_key,name,realm,race,class_token,
                     level,source_key,source_version,game_build,imported_at,captured_at,evidence_kind,confidence,confidence_basis,
                     raw_reference,sha256,payload_json,limitations_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (f"alts-forever:{namespace}:{name}",name,"unknown","unknown",char["class"],char["level"],SOURCE_KEY,
-                     "SavedVariables v2 (inspected addon 0.9.1)","unknown",now,captured,"observed",0.9,
+                    (f"alts-forever:{namespace}:{name}",name,identity.get('realm') or 'unknown',identity.get('race') or 'unknown',char["class"],char["level"],SOURCE_KEY,
+                     "SavedVariables v2; installed addon release not recorded",identity.get('build') or 'unknown',now,captured,"observed",0.9,
                      "Direct WoW-saved addon observation; coverage and field freshness vary, not a probability.",
                      reference,digest,body,json.dumps(LIMITATIONS))).lastrowid
                 for slot, link in (char.get("gear") or {}).items():
@@ -166,7 +183,7 @@ class AltsForeverAdapter:
                     connection.executemany("INSERT INTO character_inventory_observations VALUES (?,?,?,?)", rows)
                     records += len(rows)
                 imported += 1
-            if imported:
+            if imported or records:
                 connection.execute("""INSERT INTO imports(adapter_key,source_id,started_at,completed_at,status,file_name,record_count)
                     VALUES (?,?,?,?,'complete',?,?)""", (self.capability.key,source_id,now,now,str(path),records))
         return ImportResult(self.capability.key, SOURCE_KEY, records, imported, LIMITATIONS)
@@ -191,7 +208,7 @@ class AltsForeverWatcher:
                 self._signatures[str(path)] = signature
             except Exception as exc:
                 logging.exception("Alts Forever saved-file import failed: %s", path)
-                with self.database.transaction() as connection:
+                with self.database.write_transaction() as connection:
                     connection.execute("""INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
                         VALUES (?,'Alts Forever character observations','local_character_observation',1,?)
                         ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""", (SOURCE_KEY,str(exc)))

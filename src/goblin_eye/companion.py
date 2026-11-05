@@ -72,7 +72,7 @@ class CompanionStore:
             raise ValueError('sourced_evidence requires at least one explicit evidence reference')
         occurred_at = _timestamp(occurred_at)
         now = datetime.now(timezone.utc).isoformat()
-        with self.database.transaction() as connection:
+        with self.database.write_transaction() as connection:
             if character_snapshot_id is not None and not connection.execute('SELECT 1 FROM character_snapshots WHERE id=?', (character_snapshot_id,)).fetchone():
                 raise ValueError('character_snapshot_id does not exist')
             cursor = connection.execute('''INSERT INTO companion_entries
@@ -123,8 +123,7 @@ class CompanionStore:
         _choice(status, 'status', STATUSES)
         _choice(author, 'author', AUTHORS)
         now = datetime.now(timezone.utc).isoformat()
-        with self.database.transaction() as connection:
-            connection.execute('BEGIN IMMEDIATE')
+        with self.database.write_transaction() as connection:
             row = connection.execute('SELECT status FROM companion_entries WHERE id=?', (entry_id,)).fetchone()
             if row is None:
                 raise ValueError('Companion entry not found')

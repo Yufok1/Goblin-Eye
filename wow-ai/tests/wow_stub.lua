@@ -81,6 +81,12 @@ function Methods.CreateTexture(self, name, layer)
 	return t
 end
 function Methods.CreateFontString(self, name) return NewObject("FontString", name, self) end
+function Methods.CreateMaskTexture(self, name) return NewObject("MaskTexture", name, self) end
+function Methods.SetTexCoord(self, ...) self.coords={...} end
+function Methods.AddMaskTexture(self, mask) self.mask=mask end
+function Methods.GetCenter(self) return 200,200 end
+function Methods.GetEffectiveScale(self) return 2 end
+function GetCursorPosition() return 600,400 end
 function Methods.CreateAnimationGroup(self) return NewObject("AnimationGroup", nil, self) end
 function Methods.CreateAnimation(self) return NewObject("Animation", nil, self) end
 function Methods.IsPlaying(self) return self.playing or false end

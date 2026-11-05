@@ -119,7 +119,7 @@ def main() -> None:
             pass
         # Pause before deletion so a later server restart cannot repopulate data.
         values = json.loads(args.config.read_text(encoding='utf-8')) if args.config.exists() else {}
-        values.update(auto_sync_ahledger=False, auto_discover_auctionator=False, auto_import_ahledger_scans=False, auto_import_alts_forever=False)
+        values.update(auto_sync_ahledger=False, auto_discover_auctionator=False, auto_import_ahledger_scans=False, auto_import_alts_forever=False, auto_import_questie_saved=False)
         args.config.write_text(json.dumps(values, indent=2) + '\n', encoding='utf-8')
         print(json_text(reset_personal_data(database, settings.auctionator_paths)))
     elif args.command == "reset-auctions":

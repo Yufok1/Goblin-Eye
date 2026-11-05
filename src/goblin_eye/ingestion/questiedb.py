@@ -18,16 +18,25 @@ from .professiondb import positive_id
 
 SOURCE_KEY = "questiedb-forever"
 SOURCE_URL = "https://github.com/Questie/QuestieDB"
+AREA_MAP_FILE = "support/Forever/Zones/areaIdToUiMapId.lua"
+QUEST_FIELDS = ('name startedBy finishedBy requiredLevel questLevel requiredRaces requiredClasses '
+    'objectivesText triggerEnd objectives sourceItemId preQuestGroup preQuestSingle childQuests '
+    'inGroupWith exclusiveTo zoneOrSort requiredSkill requiredMinRep requiredMaxRep requiredSourceItems '
+    'nextQuestInChain questFlags specialFlags parentQuest reputationReward breadcrumbForQuestId '
+    'breadcrumbs extraObjectives requiredSpell requiredSpecialization requiredMaxLevel '
+    'availableUntilCompleted availableStartingWith requiredRanks disabledByQuest').split()
 LIMITATIONS = (
     "Baked QuestieDB Forever metadata is a static source assertion, not a live spawn survey.",
     "Spawn map keys are Questie area IDs and are deliberately not relabeled as UI map IDs.",
     "Coordinates and paths do not supply simultaneous population, respawn timers, kill rates, drop quantities or current phase availability.",
     "The baked artifact includes static corrections; client-time faction-specific dynamic corrections are not applied by this offline import.",
+    "Quest requirements and objectives are static assertions, not the active quest log or proof of current eligibility. Positive zoneOrSort values are area IDs; negative values are quest categories.",
+    "UI map associations come from the installed Forever area mapping; original area IDs and area-relative coordinates are preserved. No coordinate conversion is performed.",
 )
 
 
 def _metadata(text: str) -> dict[str, str]:
-    result = dict(re.findall(r"^## ([^:]+):\s*(.*)$", text, re.MULTILINE))
+    result = {key: value.strip() for key,value in re.findall(r"^## ([^:\r\n]+):[^\S\r\n]*(.*)$", text, re.MULTILINE)}
     if len(result) < 100:
         raise ValueError("QuestieDB baked metadata is missing")
     return result
@@ -66,6 +75,26 @@ def _text(value):
     return value
 
 
+def _json_value(value):
+    if isinstance(value, bytes): return value.decode('utf-8')
+    if isinstance(value, list): return [_json_value(v) for v in value]
+    if isinstance(value, dict): return {str(_text(k)): _json_value(v) for k, v in value.items()}
+    return value
+
+
+def parse_area_maps(body):
+    """Read only the inspected numeric literal table, never execute addon Lua."""
+    match = re.search(r'ZoneDB\.private\.areaIdToUiMapId\s*=\s*\[\[return\s*\{(.*?)\}\s*\]\]', body.decode('utf-8-sig'), re.S)
+    if not match: raise ValueError('Unreviewed QuestieDB Forever area mapping')
+    table = re.sub(r'--[^\n]*', '', match.group(1))
+    entries = re.findall(r'\[(\d+)\]\s*=\s*(\d+)\s*,?', table)
+    if re.sub(r'\[\d+\]\s*=\s*\d+\s*,?', '', table).strip() or not entries:
+        raise ValueError('Nonliteral QuestieDB area mapping')
+    result = {int(k): int(v) for k, v in entries}
+    if len(result) != len(entries): raise ValueError('Duplicate QuestieDB area mapping')
+    return result
+
+
 def _field_present(row: dict, index: int) -> bool:
     mask = row.get(b"p", row.get("p", 0))
     return isinstance(mask, int) and bool(mask & (1 << (index - 1)))
@@ -102,6 +131,8 @@ def parse_questiedb(root: Path) -> dict:
     body = read_file(toc_path, 80_000_000)
     text = body.decode("utf-8-sig")
     metadata = _metadata(text)
+    map_body = read_file(root / AREA_MAP_FILE, 2_000_000)
+    area_maps = parse_area_maps(map_body)
     if metadata.get("Interface") != "16001" or metadata.get("X-Flavor") != "Forever" or metadata.get("X-Mode") != "baked":
         raise ValueError("Unreviewed QuestieDB flavor, interface or storage mode")
     schema = {"Npc": {"count": 15, "spawns": 7, "waypoints": 8},
@@ -142,6 +173,9 @@ def parse_questiedb(root: Path) -> dict:
                                   npc_flags=row.get(15))
             else:
                 attributes.update(faction_id=row.get(6))
+            attributes['ui_map_ids'] = sorted({area_maps[a] for a in spawns if area_maps.get(a, 0)>0})
+            if area_maps.get(attributes['area_id'], 0)>0: attributes['ui_map_id'] = area_maps[attributes['area_id']]
+            attributes['map_mapping_reference'] = AREA_MAP_FILE
             counts[kind] += 1
             if spawns: counts[f"{kind}_with_spawns"] += 1
             if waypoints: counts[f"{kind}_with_waypoints"] += 1
@@ -149,8 +183,34 @@ def parse_questiedb(root: Path) -> dict:
             counts["waypoint_points"] += sum(len(path) for paths in waypoints.values() for path in paths)
             records.append((kind, entity_id, _text(row.get(1)), json.dumps(attributes, ensure_ascii=False, separators=(",", ":")),
                             f"QuestieDB_Forever.toc#X-{entity}-{entity_id}"))
-    return {"root": root, "body": body, "version": metadata.get("Version"), "build_commit": metadata.get("X-BUILD-COMMIT"),
-            "build_time": metadata.get("X-BUILD-TIME"), "sha256": hashlib.sha256(body).hexdigest(),
+    quest_ids = _decode(metadata, 'X-Quest-IDS', compressed=True)
+    if not isinstance(quest_ids, list) or len(quest_ids)!=len(set(quest_ids)):
+        raise ValueError('Invalid QuestieDB quest ID index')
+    counts['quest'] = 0
+    for quest_id in quest_ids:
+        positive_id(quest_id, 'Quest ID')
+        row = _decode(metadata, f'X-Quest-{quest_id}-S')
+        if isinstance(row, list): row = dict(enumerate(row, 1))
+        if not isinstance(row, dict): raise ValueError(f'Missing QuestieDB quest scalar row: {quest_id}')
+        fields = {}
+        for index, name in enumerate(QUEST_FIELDS, 1):
+            value = row.get(index)
+            if _field_present(row, index):
+                value = _decode(metadata, f'X-Quest-{quest_id}-{index}')
+                if value is None: raise ValueError(f'Missing QuestieDB quest field: {quest_id}/{index}')
+            if value is not None: fields[name] = _json_value(value)
+        if not isinstance(fields.get('name'), str): raise ValueError('Quest name missing')
+        attributes = {'quest_fields': fields, 'level': fields.get('questLevel'),
+                      'required_level': fields.get('requiredLevel'), 'zone_or_sort': fields.get('zoneOrSort')}
+        area = fields.get('zoneOrSort')
+        if isinstance(area, int) and area>0:
+            attributes['area_id'] = area
+            if area_maps.get(area, 0)>0: attributes['ui_map_id'] = area_maps[area]
+        attributes['map_mapping_reference'] = AREA_MAP_FILE
+        records.append(('quest', quest_id, fields['name'], json.dumps(attributes, ensure_ascii=False), f'QuestieDB_Forever.toc#X-Quest-{quest_id}'))
+        counts['quest'] += 1
+    return {"root": root, "body": body, "map_body": map_body, "version": metadata.get("Version"), "build_commit": metadata.get("X-BUILD-COMMIT"),
+            "build_time": metadata.get("X-BUILD-TIME"), "sha256": hashlib.sha256(b'questiedb-quest-schema-v2\0'+body+map_body).hexdigest(),
             "records": tuple(records), "counts": counts}
 
 
@@ -158,14 +218,14 @@ class QuestieDbAdapter:
     capability = AdapterCapability(
         key="questiedb_forever_v1", display_name="QuestieDB Forever spawn graph", status="ready",
         input_types=("installed baked QuestieDB_Forever.toc",),
-        supplies=("complete baked NPC/object index", "spawn coordinates", "movement paths", "levels and ranks"),
+        supplies=("baked NPC/object/quest index", "quest requirements and objectives", "spawn coordinates", "movement paths", "levels and ranks"),
         needs=("installed QuestieDB Forever package",), documentation_url=SOURCE_URL,
         notes="Area IDs stay distinct from UI map IDs; no respawn time or live population is inferred.")
 
     def import_file(self, database: Database, path: Path) -> ImportResult:
         data = parse_questiedb(path)
         now = datetime.now(timezone.utc).isoformat()
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?, 'QuestieDB Forever spawn graph', 'bundled_world_database', ?, 5, ?, ?)
                 ON CONFLICT(source_key) DO UPDATE SET last_success_at=excluded.last_success_at,last_error=NULL""",
@@ -180,8 +240,10 @@ class QuestieDbAdapter:
                 connection.execute("UPDATE research_datasets SET active=1 WHERE id=?", (existing["id"],))
                 return ImportResult(self.capability.key, SOURCE_KEY, 0, 0, ("Previously imported revision reactivated.",))
             manifest = {"QuestieDB_Forever.toc": {"path": str(data["root"] / "QuestieDB_Forever.toc"),
-                "sha256": data["sha256"], "bytes": len(data["body"]), "counts": data["counts"],
-                "build_commit": data["build_commit"], "build_time": data["build_time"]}}
+                "sha256": hashlib.sha256(data["body"]).hexdigest(), "bytes": len(data["body"]), "counts": data["counts"],
+                "build_commit": data["build_commit"], "build_time": data["build_time"]},
+                AREA_MAP_FILE: {"sha256": hashlib.sha256(data['map_body']).hexdigest(), "bytes": len(data['map_body'])},
+                "parser_revision": 2}
             cursor = connection.execute("""INSERT INTO research_datasets(source_id,dataset_key,sha256,source_version,game_build,
                 content_phase,retrieved_at,confidence,evidence_kind,manifest_json,limitations_json)
                 VALUES (?,'world-spawns',?,?,?,'Forever',?,0.65,'extracted',?,?)""",
@@ -192,7 +254,10 @@ class QuestieDbAdapter:
                 VALUES (?,?,?,?,?,?)""", ((dataset_id, *row) for row in data["records"]))
             connection.execute("""INSERT OR IGNORE INTO source_documents(source_id,url,retrieved_at,content_type,sha256,body)
                 VALUES (?,?,?,'text/plain; charset=utf-8',?,?)""",
-                (source_id, (data["root"] / "QuestieDB_Forever.toc").as_uri(), now, data["sha256"], data["body"]))
+                (source_id, (data["root"] / "QuestieDB_Forever.toc").as_uri(), now, hashlib.sha256(data['body']).hexdigest(), data["body"]))
+            connection.execute("""INSERT OR IGNORE INTO source_documents(source_id,url,retrieved_at,content_type,sha256,body)
+                VALUES (?,?,?,'text/plain; charset=utf-8',?,?)""",
+                (source_id, (data['root']/AREA_MAP_FILE).as_uri(), now, hashlib.sha256(data['map_body']).hexdigest(), data['map_body']))
             connection.execute("""INSERT INTO imports(adapter_key,source_id,started_at,completed_at,status,file_name,record_count)
                 VALUES (?,?,?,?,'complete',?,?)""", (self.capability.key, source_id, now, now, str(data["root"]), len(data["records"])))
         return ImportResult(self.capability.key, SOURCE_KEY, len(data["records"]), 0, LIMITATIONS)

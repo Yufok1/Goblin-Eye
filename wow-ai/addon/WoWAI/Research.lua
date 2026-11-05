@@ -16,15 +16,17 @@ end
 local function Button(parent, text, w, fn)
  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
  b:SetSize(w, 22); b:SetText(text); b:SetScript("OnClick", fn)
+ if AI.SkinButton then AI.SkinButton(b) end
  return b
 end
 local voiceWindow
 function AI.RefreshVoiceSettings()
  if not voiceWindow then return end
  local s = AI.SpeechInfo()
- voiceWindow.slower:SetEnabled(true); voiceWindow.faster:SetEnabled(true)
+ local desktop = not s.profile or s.profile == "desktop"
+ voiceWindow.slower:SetEnabled(desktop); voiceWindow.faster:SetEnabled(desktop)
  voiceWindow.playSummary:SetEnabled(not s.busy);voiceWindow.playFull:SetEnabled(not s.busy);voiceWindow.testVoice:SetEnabled(not s.busy)
- local voice = (s.voice or "") ~= "" and s.voice or "Windows default"
+ local voice = s.profile == "goblin" and "Goblin (local)" or s.profile == "orc" and "Orc (local)" or ((s.voice or "") ~= "" and s.voice or "Windows default")
  voiceWindow.status:SetText(Safe("Automatic replies: " .. (s.enabled and "ON" or "OFF") .. " | " .. (s.mode or "summary") .. "\nVolume: " .. (s.volume or 70) .. " | " .. (s.phase or "Idle") .. "\nVoice: " .. voice .. "\n" .. (s.error or "")))
 end
 function AI.ShowVoiceSettings()
@@ -48,9 +50,10 @@ function AI.ShowVoiceSettings()
   f.faster = Control("Faster", "rate", function() return math.min(10, (AI.SpeechInfo().rate or 0) + 1) end, 328, 164)
   f.playSummary=Control("Play TL;DR", "listen", "", 16, 193); f.playFull=Control("Play full", "listenfull", "", 120, 193)
   Control("Stop voice", "stop", "", 224, 193); Control("Refresh", "status", "", 328, 193)
-  f.testVoice=Control("Test voice", "preview", "", 16, 222)
-  local note = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"); note:SetPoint("TOPLEFT", 16, -253); note:SetWidth(402); note:SetJustifyH("LEFT")
-  note:SetText("Windows speech reads replies locally.\nPlay chooses a saved summary or full reply; Stop cancels playback.\nChoose another installed voice with /wow-ai voice name <name>.")
+  Control("Goblin", "character", "goblin", 16, 222); Control("Orc", "character", "orc", 120, 222); Control("Desktop", "character", "desktop", 224, 222)
+  f.testVoice=Control("Test voice", "preview", "", 16, 251)
+  local note = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall"); note:SetPoint("TOPLEFT", 16, -282); note:SetWidth(402); note:SetJustifyH("LEFT")
+  note:SetText("Goblin and Orc use your private local voice files.\nPlay reads a saved summary or full reply; Stop cancels playback.\nCharacter voices prepare once, then reuse the loaded model.")
   voiceWindow = f
  end
  AI.RefreshVoiceSettings(); voiceWindow:Show()
@@ -198,12 +201,12 @@ function AI.DrawEvidence(b, message, offset, width, refresh)
  local header = b.evidenceHeader
  header:ClearAllPoints(); header:SetPoint("TOPLEFT", b.body, "BOTTOMLEFT", 0, -6 - offset)
  header:SetWidth(math.min(310, width - 24)); header:Show()
- header:SetText((message.evidenceOpen == false and "[+]" or "[-]") .. " Evidence - " .. #cards .. " cards")
- header:SetScript("OnClick", function() message.evidenceOpen = message.evidenceOpen == false; refresh() end)
+ header:SetText((message.evidenceOpen and "[-]" or "[+]") .. " Evidence - " .. #cards .. " cards")
+ header:SetScript("OnClick", function() message.evidenceOpen = not message.evidenceOpen; refresh() end)
  offset = offset + 28
  local pageCount = math.ceil(#cards / 3)
  message.evidencePage = math.max(1, math.min(pageCount, message.evidencePage or 1))
- if message.evidenceOpen ~= false then
+ if message.evidenceOpen then
   message.evidenceDetails = message.evidenceDetails or {}
   for i = (message.evidencePage - 1) * 3 + 1, math.min(message.evidencePage * 3, #cards) do
    local card = cards[i]
@@ -225,6 +228,7 @@ function AI.DrawEvidence(b, message, offset, width, refresh)
    frame.evidenceCard = card
    local amber = card.badge == "Classic baseline" or card.type == "aggregate"
    frame:SetBackdropColor(0.04, 0.065, 0.075, 0.96); frame:SetBackdropBorderColor(amber and 0.65 or 0.28, amber and 0.48 or 0.62, amber and 0.20 or 0.64, 1)
+   if AI.ThemeEvidence then AI.ThemeEvidence(frame,amber) end
    frame.title:SetWidth(width - 58); frame.title:SetText(Safe(card.title .. "  [" .. card.badge .. "]"))
    local lines = {card.headline, (card.market_key ~= "" and card.market_key .. " | " or "") .. (card.source_key ~= "" and card.source_key or "See tool result"), AI.EvidenceStamp(card)}
    if not message.evidenceDetails[card.key] then
@@ -312,13 +316,13 @@ function AI.DrawResearch(b, message, offset, width, refresh)
  end
  local pages
  y, pages = AI.DrawEvidence(b, message, y, width, refresh)
- if pages and pages > 1 and message.evidenceOpen ~= false then
+ if pages and pages > 1 and message.evidenceOpen then
   local previous = Btn("< Cards", 8, 75, function() message.evidencePage = math.max(1, message.evidencePage - 1); refresh() end)
   local nextPage = Btn("Cards >", 88, 75, function() message.evidencePage = math.min(pages, message.evidencePage + 1); refresh() end)
   previous:SetEnabled(message.evidencePage > 1); nextPage:SetEnabled(message.evidencePage < pages)
   y = y + 26; Text("Evidence page " .. message.evidencePage .. " / " .. pages)
  end
- if research and (research.cards_omitted or 0) > 0 and message.evidenceOpen ~= false then Text(research.cards_omitted .. " earlier cards omitted; inspect tool results or the archive.") end
+ if research and (research.cards_omitted or 0) > 0 and message.evidenceOpen then Text(research.cards_omitted .. " earlier cards omitted; inspect tool results or the archive.") end
  if research and #(research.calls or {}) > 0 then
   Btn((message.researchOpen and "[-]" or "[+]") .. " Research - " .. (research.total or #research.calls) .. " tool calls", 0, math.min(310, width - 24), function() message.researchOpen = not message.researchOpen; refresh() end)
   y = y + 28

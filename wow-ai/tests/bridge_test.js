@@ -76,7 +76,7 @@ test('systemPrompt always asks for the TL;DR block, and wraps the game context a
   // The primer rides with the context, and only with it.
   const withPrimer = P.systemPrompt('Character: Testchar', '# Primer\n\nUse local.');
   assert.ok(withPrimer.endsWith('Reference for writing addons and macros for this client. Follow it when the task is about WoW, and check anything it marks as uncertain against the Blizzard UI source it names:\n\n# Primer\n\nUse local.'));
-  assert.ok(!P.systemPrompt('', '# Primer').includes('# Primer'));
+  assert.ok(P.systemPrompt('', '# Primer').includes('# Primer'), 'research primer survives without live game context');
 });
 
 test('splitSummary takes the last TL;DR block for the game chat and keeps the whole reply for the window', () => {

@@ -50,7 +50,7 @@ def matches_profile(profile, *, faction='unknown', region='unknown', realm='unkn
 
 
 def configure_market(database, settings):
-    with database.transaction() as c:
+    with database.write_transaction() as c:
         profile = market_profile(c)
         values = {key: getattr(settings, 'local_' + key) for key in ('faction','ruleset','region','realm')}
         profile = _merge_identity(profile, values)
@@ -115,8 +115,7 @@ def reset_auctions(database, auctionator_paths=(), *, clear_characters=False):
         capture = parse_auctionator_file(path)
         for market, items in capture.markets.items():
             baselines.extend((str(path.resolve()),market,str(k),digest(v)) for k,v in items.items() if isinstance(v,dict))
-    with database.transaction() as c:
-        c.execute('BEGIN IMMEDIATE')
+    with database.write_transaction() as c:
         c.execute('PRAGMA secure_delete=ON')
         counts = {t:c.execute(f'SELECT count(*) FROM {t}').fetchone()[0]
                   for t in ('snapshots','listings','auction_rows','price_observations','market_captures','market_price_points')}
@@ -150,6 +149,9 @@ def reset_auctions(database, auctionator_paths=(), *, clear_characters=False):
             c.execute('DELETE FROM character_inventory_observations')
             c.execute('DELETE FROM character_item_observations')
             c.execute('DELETE FROM character_snapshots')
+            for table in ('item_instance_facts','character_quest_snapshots'):
+                counts[table]=c.execute('SELECT count(*) FROM '+table).fetchone()[0]
+                c.execute('DELETE FROM '+table)
             c.execute("DELETE FROM imports WHERE source_id IN (SELECT id FROM sources WHERE source_key='local-alts-forever')")
         source_id=c.execute("SELECT id FROM sources WHERE source_key='local-ahledger'").fetchone()[0]
         local_market(c,source_id,now)
@@ -176,7 +178,7 @@ def reset_personal_data(database, auctionator_paths=()):
             path.unlink()
             removed += 1
     # Remove freed SQLite pages rather than keeping deleted rows in the DB file.
-    with database.transaction() as c:
+    with database.write_transaction(begin=False) as c:
         checkpoint = c.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
         if checkpoint[0]:
             raise ValueError('Reset committed, but a database reader prevents checkpointing. Close clients and retry maintenance.')

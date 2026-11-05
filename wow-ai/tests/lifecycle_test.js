@@ -17,8 +17,11 @@ function fixture(t,parallel=1,delay=60000){
  const cfg=JSON.parse(fs.readFileSync(path.join(bridge,'config.example.json'),'utf8'));
  cfg.addonDir=path.join(root,'addons');cfg.inboxFile=path.join(cfg.addonDir,'WoWAI','Inbox.lua');cfg.savedVariablesFile=path.join(root,'save.lua');
  cfg.defaultCwd=root;cfg.agent='codex';cfg.capture.enabled=false;cfg.slots=3;cfg.actMax=3;cfg.presenceMax=3;cfg.primerFile='';cfg.pollMs=50;cfg.maxParallel=parallel;
- const fake=path.join(root,'fake-agent.js');cfg.agents={codex:{path:fake,permissionMode:'default'}};
+ const fake=path.join(root,'fake-agent.js');
+ cfg.agents=Object.fromEntries(require('../bridge/agents').agentIds().map(id=>[id,{path:path.join(root,'missing-'+id),permissionMode:'default'}]));
+ cfg.agents.codex={path:fake,permissionMode:'default'};
  fs.writeFileSync(fake,`const fs=require('fs'),path=require('path'),{spawn}=require('child_process');
+ if(process.argv.includes('app-server'))process.exit(0);
  process.stdin.resume();process.stdin.on('end',()=>{
  fs.appendFileSync(path.join(__dirname,'starts.txt'),'start\\n');
  fs.appendFileSync(path.join(__dirname,'pids.txt'),process.pid+'\\n');
@@ -71,7 +74,7 @@ test('a power-cut restart never reruns an accepted request or duplicates its tra
  f.kill(first);await until(()=>first.exitCode!==null||first.signalCode!==null,'bridge exited');
  await f.start();await pause(250);
  assert.equal(f.starts(),1);assert.deepEqual(f.state().pending,{});
- assert.ok(f.inbox().includes('status = "stopped"'));
+ await until(()=>f.inbox().includes('status = "stopped"'),'interrupted snapshot publishes');
  const messages=read(path.join(f.root,'transcripts.json'),{}).chats.c1.messages;
  assert.equal(messages.filter(m=>m.role==='user').length,1);
  assert.ok(messages.at(-1).text.includes('was not resumed'));

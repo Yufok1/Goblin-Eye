@@ -73,7 +73,7 @@ class NormalizedJsonAdapter:
             reject_external_auctions(database)
         source_key = _required(data, "source_key", "normalized research document")
         count = 0
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             for row in data.get("sources", []):
                 connection.execute(
                     """INSERT INTO sources(source_key, name, source_type, url, trust_rank, enabled, notes)
@@ -288,7 +288,7 @@ class CsvSnapshotAdapter:
             identity='csv:'+json.dumps(key,separators=(',',':'))+':'+digest
             for row in group: row['snapshot_external_id']=identity
         snapshot_keys: set[str] = set()
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             existing_ids={row[0] for row in connection.execute("SELECT external_id FROM snapshots WHERE external_id LIKE 'csv:%'")}
             for row in rows:
                 if row['snapshot_external_id'] in existing_ids: continue

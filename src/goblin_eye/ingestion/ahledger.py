@@ -107,7 +107,7 @@ class AHLedgerPublicApiAdapter:
             if item.get("id"):
                 item_records.append((item, download.url))
 
-        with database.transaction() as connection:
+        with database.write_transaction() as connection:
             connection.execute(
                 """INSERT INTO sources(source_key, name, source_type, url, trust_rank, enabled, notes,
                 last_success_at, last_error) VALUES ('ahledger', 'AHledger Forever community prices', 'community_api',
@@ -132,7 +132,7 @@ class AHLedgerPublicApiAdapter:
                 connection.execute(
                     """INSERT INTO markets(market_key, name, region, ruleset, faction, is_verified,
                     source_id, retrieved_at, game_build, content_phase, confidence, evidence_kind)
-                    VALUES (?, ?, ?, ?, ?, 0, ?, ?, NULL, 'Forever beta', 0.85, 'observed')
+                    VALUES (?, ?, ?, ?, ?, 0, ?, ?, NULL, 'Forever; observation phase unknown', 0.85, 'observed')
                     ON CONFLICT(market_key) DO UPDATE SET name=excluded.name, region=excluded.region,
                     ruleset=excluded.ruleset, faction=excluded.faction, source_id=excluded.source_id,
                     retrieved_at=excluded.retrieved_at, confidence=excluded.confidence""",
@@ -178,7 +178,7 @@ class AHLedgerPublicApiAdapter:
                     """INSERT INTO item_observations(source_id, item_id, name, quality, item_class,
                     item_subclass, item_level, required_level, vendor_sell_copper, icon_url,
                     retrieved_at, content_phase, confidence, evidence_kind, raw_reference)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Forever beta', 0.85, 'extracted', ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Forever; observation phase unknown', 0.85, 'extracted', ?)
                     ON CONFLICT(source_id, item_id) DO UPDATE SET name=excluded.name,
                     quality=excluded.quality, item_class=excluded.item_class,
                     item_subclass=COALESCE(excluded.item_subclass, item_observations.item_subclass),
@@ -219,7 +219,7 @@ class AHLedgerWatcher:
                 self.adapter.sync(self.database)
             except Exception as exc:
                 now = datetime.now(timezone.utc).isoformat()
-                with self.database.transaction() as connection:
+                with self.database.write_transaction() as connection:
                     connection.execute(
                         """INSERT INTO sources(source_key, name, source_type, url, trust_rank, enabled,
                         notes, last_success_at, last_error) VALUES ('ahledger', 'AHledger Forever community prices', 'community_api',

@@ -12,6 +12,16 @@ if not exist "bridge\config.json" (
   pause
   exit /b 1
 )
+if exist "%~dp0python\python.exe" (
+  "%~dp0python\python.exe" "%~dp0wow-ai\bridge\export-research-tools.py"
+) else (
+  python "%~dp0wow-ai\bridge\export-research-tools.py"
+)
+if errorlevel 1 (
+  echo Could not generate the read-only research policy. Bridge not started.
+  pause
+  exit /b 1
+)
 echo Goblin Eye optional in-game chat bridge. Keep this window open.
 node bridge\supervisor.js --project "%~dp0Goblin-Eye-Chat"
 if errorlevel 1 pause

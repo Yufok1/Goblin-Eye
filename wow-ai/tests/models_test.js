@@ -2,6 +2,27 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),os=require('os');
 const M=require('../bridge/models'),P=require('../bridge/protocol'),A=require('../bridge/agents');
 const r=id=>M.row({id,name:'Name '+id,variants:['low','high'],efforts:['low','high']});
+test('background retries a timed-out Kilo promptly without refreshing healthy providers',async()=>{
+ let now=0;const calls={};
+ const c=new M.ModelCatalog({config:{},defaultAgent:'kilo',now:()=>now,loader:async id=>{calls[id]=(calls[id]||0)+1;if(id==='kilo'&&calls[id]===1)throw Error('Model discovery timed out.');return [r(id+'/model')];}});
+ await c.refreshBackground();assert.equal(c.wire().find(v=>v.agent==='kilo').status,'error');
+ now=29999;await c.refreshBackground();assert.equal(calls.kilo,1);
+ now=30000;await c.refreshBackground();assert.equal(calls.kilo,2);assert.equal(calls.codex,1);
+ assert.equal(c.wire().find(v=>v.agent==='kilo').status,'ready');
+});
+test('background catalogs deliver every model, share caches, and retain data on refresh failure',async()=>{
+ let now=0,fail=false,calls=0;
+ const items=Array.from({length:27},(_,i)=>r('model'+i));
+ const c=new M.ModelCatalog({config:{},defaultAgent:'kilo',now:()=>now,loader:async()=>{calls++;if(fail)throw Error('offline');return items;}});
+ await c.refreshBackground();
+ const firstCalls=calls;
+ const view=c.wire().find(v=>v.agent==='kilo');
+ assert.equal(view.complete,true);assert.equal(view.chat,'');assert.equal(view.items.length,27);
+ assert.match(P.luaTable('Data',[],{catalogs:c.wire()}),/complete = true/);
+ await c.refreshBackground();assert.equal(calls,firstCalls);
+ now=300001;fail=true;await c.refreshBackground();
+ const stale=c.wire().find(v=>v.agent==='kilo');assert.equal(stale.status,'ready');assert.equal(stale.items.length,27);assert.equal(stale.error,'offline');assert.equal(stale.fetched_at,0);
+});
 test('Kilo verbose catalog parses real pretty metadata and drops non-tool models',()=>{
  const text='kilo/orc\n'+JSON.stringify({name:'Orc',capabilities:{toolcall:true},isFree:true,cost:{input:0,output:0},variants:{low:{},high:{}}},null,2)+'\nkilo/no-tools\n'+JSON.stringify({capabilities:{toolcall:false}},null,2);
  const rows=M.parseModels('kilo',text);assert.equal(rows.length,1);assert.equal(rows[0].id,'kilo/orc');assert.deepEqual(rows[0].variants,['low','high']);assert.equal(rows[0].free,true);assert.equal(rows[0].priced,true);

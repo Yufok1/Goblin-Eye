@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- Bound Windows agent cleanup and recover from failed taskkill helpers when Stop is requested.
+
+- Fix Windows speech pipe encoding for Unicode punctuation and accented names.
+- Select explicitly configured regional Auctionator profiles without inventing a
+  realm, explain Questie caches excluded by snapshot import time, and report
+  freshness independently for local prices, scans, public markets and characters.
+- Preserve configured public-price import labels separately from unknown source
+  observation phases through an additive migration; retain original capture dates.
+
+- Discover the Forever live client before beta, respect explicit source paths, and
+  keep chat MCP connections on the configured database. Review Alts Forever 1.0.1
+  for the existing observation export.
+- Queue background database writes without blocking committed-evidence reads;
+  import QuestieDB quest requirements and sourced area-to-map mappings.
+- Accept reviewed Forever Guide catalog corrections and updated dungeon
+  provenance while preserving mixed builds and Classic baselines.
+- Add the 28-prompt in-game research library, complete cached model catalogs,
+  automatic model discovery/retries, and clear Antigravity approval failures.
+
+- Observe exact equipped and encountered item variants through Alts Forever, with bounded capture and backups; keep WoWAI as conversation only.
+- Import ProfessionDB applied enchant stats, Questie completion caches and all supported Forever Guide tooltip stat keys.
+- Add report preflight, paged equipment/inventory/datasets/evidence, and sourced dungeon membership filters.
+- Keep oversized MCP responses usable and explicitly distinguish missing observations from absent game content.
+
+- Accept AHledger public price tables with either eight legacy fields or nine current fields. Preserve the additional daily sales estimate in market history with explicit provider attribution; unknown estimates remain unknown.
+
+- Restore Goblin Eye grimoire theme and optional private speech runtime (no voice assets distributed).
+- Populate existing character/item tools from installed Forever Guide item catalogs, keeping stat variants, conflicts, source builds and Classic fallbacks visible.
+- Preserve explicit equipment slots and separate unavailable character totals from base item stats. No WoWAI equipment requests or gameplay access.
+
 - Support ProfessionDB 1.9 borrowed required-skill annotations and additional
   metadata catalogs without executing Lua. Retain borrowed origins in recipe
   evidence; cache availability/location catalogs without asserting their contents

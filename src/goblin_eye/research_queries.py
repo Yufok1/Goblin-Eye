@@ -20,11 +20,19 @@ WORLD_JOIN = """ FROM world_entity_facts w JOIN research_datasets d ON d.id=w.da
 
 def quality_sql(item_column):
     # The caller supplies only a static SQL identifier, never user input.
-    return f"""(SELECT json_object('quality',io.quality,'source_key',qs.source_key,
+    return f"""coalesce((SELECT json_object('quality',io.quality,'source_key',qs.source_key,
         'retrieved_at',io.retrieved_at,'game_build',io.game_build,'confidence',io.confidence)
         FROM item_observations io JOIN sources qs ON qs.id=io.source_id
         WHERE io.item_id={item_column} AND io.quality IS NOT NULL
-        ORDER BY qs.trust_rank,io.retrieved_at DESC,io.confidence DESC,io.id DESC LIMIT 1)"""
+        ORDER BY qs.trust_rank,io.retrieved_at DESC,io.confidence DESC,io.id DESC LIMIT 1),
+        (SELECT json_object('quality',min(json_extract(p.attributes_json,'$.quality')),
+            'basis','agreeing_active_catalog_assertions',
+            'assertions',json_group_array(json_object('dataset_id',pd.id,'variant',p.variant,
+                'source_key',ps.source_key,'game_build',pd.game_build,'retrieved_at',pd.retrieved_at)))
+         FROM item_property_facts p JOIN research_datasets pd ON pd.id=p.dataset_id
+         JOIN sources ps ON ps.id=pd.source_id WHERE pd.active=1 AND p.item_id={item_column}
+            AND json_extract(p.attributes_json,'$.quality') IS NOT NULL
+         HAVING count(DISTINCT json_extract(p.attributes_json,'$.quality'))=1))"""
 
 
 def expand(row):
@@ -43,7 +51,7 @@ def expand(row):
 
 
 def world_filters(query='', entity_type=None, min_level=None, max_level=None, ui_map_id=None, rank=None, zone=None,
-                  area_id=None):
+                  area_id=None, dungeon=None, database=None, membership_alias='w'):
     text(query, 'query', empty=True)
     where, args = ['d.active=1'], []
     if entity_type is not None:
@@ -52,21 +60,49 @@ def world_filters(query='', entity_type=None, min_level=None, max_level=None, ui
         where.append('w.entity_type=?'); args.append(entity_type)
     if query.strip():
         maps = [k for k,v in ZONE_NAMES.items() if len(query.strip()) >= 3 and query.strip().casefold() in v.casefold()]
-        zone_clause = " OR json_extract(w.attributes_json,'$.ui_map_id') IN (" + ','.join('?' for _ in maps) + ')' if maps else ''
+        zone_clause = " OR " + map_filter(maps) if maps else ''
         where.append('(instr(lower(w.name),lower(?))>0 OR CAST(w.entity_id AS TEXT)=?' + zone_clause + ')')
         args.extend([query.strip(), query.strip()])
-        args.extend(maps)
+        args.extend(maps + maps)
     if zone is not None:
         text(zone, 'zone')
         maps = [k for k,v in ZONE_NAMES.items() if zone.strip().casefold() in v.casefold()]
-        if not maps: raise ValueError('Zone name is not in the reviewed label catalog. Use a sourced ui_map_id; this does not mean world records are missing.')
-        where.append("json_extract(w.attributes_json,'$.ui_map_id') IN (" + ','.join('?' for _ in maps) + ')')
-        args.extend(maps)
+        if not maps:
+            if dungeon is not None: raise ValueError('Unknown zone alongside dungeon; use a recognized overworld zone or omit zone')
+            dungeon=zone
+        else:
+            where.append(map_filter(maps))
+            args.extend(maps + maps)
+    if dungeon is not None:
+        text(dungeon,'dungeon')
+        if database is None: raise ValueError('Dungeon labels require the indexed source database')
+        needle=dungeon.strip().casefold()
+        with database.transaction() as c:
+            labels=c.execute('''SELECT l.* FROM dungeon_labels l JOIN research_datasets ld ON ld.id=l.dataset_id
+                WHERE ld.active=1''').fetchall()
+        exact=[r for r in labels if needle in (r['dungeon_key'].casefold(),r['name'].casefold(),r['slug'].casefold())]
+        matches=exact or [r for r in labels if len(needle)>=3 and any(needle in r[k].casefold() for k in ('name','slug'))]
+        keys=sorted({r['dungeon_key'] for r in matches})
+        if not keys: raise ValueError('Dungeon/zone name is not in the imported label catalog. Use a sourced area_id or ui_map_id; this does not establish missing world data.')
+        if len(keys)>1: raise ValueError('Ambiguous dungeon name; select one of: '+', '.join(keys))
+        where.append(f'''EXISTS(SELECT 1 FROM dungeon_memberships dm JOIN research_datasets md ON md.id=dm.dataset_id
+            WHERE md.active=1 AND dm.dungeon_key=? AND dm.entity_type={membership_alias}.entity_type
+            AND dm.entity_id={membership_alias}.entity_id)''')
+        args.append(keys[0])
     for name, value, op in (('min_level', min_level, '>='), ('max_level', max_level, '<='),
                             ('ui_map_id', ui_map_id, '='), ('rank', rank, '=')):
         if value is not None:
             integer(value, name, 0 if name == 'rank' else 1)
-            where.append(f"json_extract(w.attributes_json,'$.{name}'){op}?"); args.append(value)
+            if name == 'ui_map_id':
+                where.append(map_filter([value])); args.extend((value, value)); continue
+            expression = f"json_extract(w.attributes_json,'$.{name}')"
+            if name in ('min_level', 'max_level'):
+                # Quest difficulty is not the minimum level required to accept it.
+                # Preserve missing/unknown values rather than casting text to zero.
+                fallback = "coalesce(json_extract(w.attributes_json,'$.level'),json_extract(w.attributes_json,'$.lv'))"
+                numeric = f"CASE WHEN typeof({fallback}) IN ('integer','real') THEN {fallback} WHEN typeof({fallback})='text' AND {fallback}<>'' AND {fallback} NOT GLOB '*[^0-9]*' THEN CAST({fallback} AS INTEGER) END"
+                expression = f"coalesce({expression},{numeric})"
+            where.append(f"{expression}{op}?"); args.append(value)
     if area_id is not None:
         integer(area_id, 'area_id', 1)
         where.append("(json_extract(w.attributes_json,'$.area_id')=? OR EXISTS(SELECT 1 FROM json_each(w.attributes_json,'$.spawn_area_ids') WHERE value=?))")
@@ -76,14 +112,20 @@ def world_filters(query='', entity_type=None, min_level=None, max_level=None, ui
     return where, args
 
 
+def map_filter(maps):
+    slots = ','.join('?' for _ in maps)
+    return ("(json_extract(w.attributes_json,'$.ui_map_id') IN (" + slots + ") OR "
+            "EXISTS(SELECT 1 FROM json_each(w.attributes_json,'$.ui_map_ids') WHERE value IN (" + slots + ")))" )
+
+
 class ResearchQueries:
     def __init__(self, database):
         self.database = database
 
     def world(self, query='', entity_type='npc', min_level=None, max_level=None,
-              ui_map_id=None, rank=None, method=None, limit=25, offset=0, zone=None, area_id=None):
+              ui_map_id=None, rank=None, method=None, limit=25, offset=0, zone=None, area_id=None,dungeon=None):
         integer(limit, 'limit', 1, 100); integer(offset, 'offset')
-        where, args = world_filters(query, entity_type, min_level, max_level, ui_map_id, rank, zone, area_id)
+        where, args = world_filters(query, entity_type, min_level, max_level, ui_map_id, rank, zone, area_id,dungeon,self.database)
         if method is not None:
             if method not in METHODS: raise ValueError(f'method must be one of {METHODS}')
             where.append('''EXISTS(SELECT 1 FROM acquisition_facts a
@@ -97,13 +139,14 @@ class ResearchQueries:
                 ' ORDER BY w.name COLLATE NOCASE,w.entity_id,d.id LIMIT ? OFFSET ?', (*args, limit, offset)).fetchall()
         return dict(records=[expand(r) for r in rows], total=total, limit=limit, offset=offset,
             truncated=offset + len(rows) < total,
+            dungeon_filter_scope='Dungeon names resolve through imported Forever Guide labels and boss/quest membership. This is incomplete membership, not all dungeon trash, and entrance coordinates never imply interior membership.' if dungeon or (zone and not any(zone.strip().casefold() in v.casefold() for v in ZONE_NAMES.values())) else None,
             interpretation='Active source assertions, not confirmed live spawns. Level filters require the entire stored NPC level range to fit. Rank and map IDs retain source codes. Missing metadata is excluded by explicit filters. An empty search is not proof a zone or mob is absent from the game.')
 
     def acquisition(self, item_id=None, query='', method=None, min_level=None, max_level=None,
                     ui_map_id=None, rank=None, item_quality=None, limit=50, offset=0, zone=None,
-                    entity_id=None, entity_type=None, area_id=None):
+                    entity_id=None, entity_type=None, area_id=None,dungeon=None):
         integer(limit, 'limit', 1, 500); integer(offset, 'offset')
-        where, args = world_filters(query, None, min_level, max_level, ui_map_id, rank, zone, area_id)
+        where, args = world_filters(query, None, min_level, max_level, ui_map_id, rank, zone, area_id,dungeon,self.database,'a')
         if entity_id is not None:
             integer(entity_id, 'entity_id', 1); where.append('a.entity_id=?'); args.append(entity_id)
         if entity_type is not None:
@@ -142,7 +185,8 @@ class ResearchQueries:
                 r['access_requirement'] = 'Eligibility, access requirements and quantities are unknown'
         return dict(item_id=item_id, records=records, total=total, limit=limit, offset=offset,
             truncated=offset + len(rows) < total, coverage=coverage, complete_loot_table=False,
-            quality_filter_scope='Quality filters use selected item_observations only. Items without a quality observation are excluded. Zero matches does not establish that no such loot exists; the acquisition index is also incomplete.',
+            dungeon_filter_scope='Source-backed boss/quest membership; incomplete dungeon coverage. Entrance coordinates are not used to assign mobs to a dungeon.' if dungeon or (zone and not any(zone.strip().casefold() in v.casefold() for v in ZONE_NAMES.values())) else None,
+            quality_filter_scope='Quality uses selected item observations, falling back to agreeing active catalog assertions. Missing or conflicting catalog-only quality is excluded. Zero matches does not establish absence; inspect item research for source conflicts.',
             coverage_scope='Omitted counts are unfiltered source coverage for the requested item; cross-item coverage is not summarized.',
             interpretation='Filters apply before pagination. These are acquisition associations, not farm rankings. Unknown quality is not RARE. Check character requirements and inspect source rank before recommending combat. Historical probability, unknown quantity and asking price cannot establish measured gold/hour.')
 
