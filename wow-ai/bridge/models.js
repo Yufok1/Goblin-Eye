@@ -1,8 +1,15 @@
 'use strict';
 // Discovery commands only: no prompts, shell, login changes or config writes.
-const {spawn}=require('child_process');
+const {spawnBackground:spawn}=require('./background-process');
 const A=require('./agents');
 const TTL=5*60*1000, PAGE_SIZE=10;
+// Native clients can delegate console creation to an external terminal host.
+// Hiding a process/private desktop alone cannot promise that such a host stays
+// off the input desktop. Idle Windows chat must not start CLI catalog probes.
+function backgroundDiscoveryEnabled(config,platform=process.platform){
+ return config?.backgroundModelDiscovery===true ||
+  (platform!=='win32' && config?.backgroundModelDiscovery!==false);
+}
 const validId=s=>typeof s==='string' && s.length>0 && s.length<=256 && !/^[\s-]|[\x00-\x20\x7f;|]/.test(s);
 const clean=(s,n=240)=>String(s||'').replace(/[\x00-\x1f\x7f|]/g,' ').slice(0,n);
 function row(m){
@@ -36,10 +43,10 @@ function discover(id,cfg,{refresh=false,spawnFn=spawn,cwd=process.cwd(),timeout=
  return new Promise((resolve,reject)=>{
   const args=id==='kilo'?['models','--verbose',...(refresh?['--refresh']:[])]:id==='agy'?['models']:id==='codex'?['app-server']:['-p','--input-format','stream-json','--output-format','stream-json','--verbose'];
   const env={...process.env};delete env.CLAUDECODE;
-  const child=spawnFn(cmd.file,[...cmd.args,...args],{cwd,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
+  const child=spawnFn(cmd.file,[...cmd.args,...args],{cwd,env,windowsHide:true,detached:process.platform!=='win32',stdio:['pipe','pipe','pipe']});
   let text='',buffer='',size=0,settled=false,rows=[],cursor=null,pages=0;
   const timer=setTimeout(()=>done(Error('Model discovery timed out. The bridge will retry automatically.')),timeout);
-  function done(err,result){if(settled)return;settled=true;clearTimeout(timer);child.kill();err?reject(err):resolve(result);}
+  function done(err,result){if(settled)return;settled=true;clearTimeout(timer);A.killTree(child);err?reject(err):resolve(result);}
   function send(ev){child.stdin.write(JSON.stringify(ev)+'\n');}
   child.on('error',()=>done(Error('Could not start model discovery.')));
   child.stdin.on('error',()=>{});
@@ -68,7 +75,7 @@ function discover(id,cfg,{refresh=false,spawnFn=spawn,cwd=process.cwd(),timeout=
  });
 }
 class ModelCatalog {
- constructor({config,defaultAgent,onChange=()=>{},loader=discover,now=Date.now,cwd}={}){Object.assign(this,{config,defaultAgent,onChange,loader,now,cwd});this.cache=new Map();this.pending=new Map();this.views=new Map();this.sequence=new Map();}
+ constructor({config,defaultAgent,onChange=()=>{},loader=discover,now=Date.now,cwd}={}){Object.assign(this,{config,defaultAgent,onChange,loader,now,cwd});this.backgroundEnabled=backgroundDiscoveryEnabled(config);this.cache=new Map();this.pending=new Map();this.views=new Map();this.sequence=new Map();}
  async request(job){
   let req;try{req=JSON.parse(job.text||'{}');}catch{req={};}
   const id=A.normalizeAgent(req.agent||job.agent||this.defaultAgent), chat=String(job.chat||''), seq=(this.sequence.get(chat)||0)+1;this.sequence.set(chat,seq);
@@ -93,7 +100,7 @@ class ModelCatalog {
  // Publish complete catalogs independently of chat/menu requests. Older addons
  // can still request their paginated views through the legacy control path.
  async refreshBackground(){
-  if(this.backgroundRunning)return;
+  if(!this.backgroundEnabled||this.backgroundRunning)return;
   this.backgroundRunning=true;
   this.nextBackgroundAttempt ||= new Map();
   const agents=A.agentIds().filter(id=>this.now()>=(this.nextBackgroundAttempt.get(id)||0));
@@ -152,4 +159,4 @@ function applyOptions(base,id,raw,entry){
  }
  return cfg;
 }
-module.exports={ModelCatalog,discover,parseModels,parseOptions,applyOptions,validId,row,TTL,PAGE_SIZE};
+module.exports={ModelCatalog,discover,parseModels,parseOptions,applyOptions,validId,row,TTL,PAGE_SIZE,backgroundDiscoveryEnabled};

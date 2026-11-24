@@ -422,18 +422,17 @@ test('outbound records replace field separators inside user text', () => {
   assert.ok(rec, 'the record keeps the full message as one wire field');
 });
 
-test('chat strips clear old context and never collect research context, even after context on', () => {
-  const vm = newVM(); login(vm); vm.run('STUB.RunTimers()');
-  assert.equal(stripRecords(vm)[0].ctx, '');
-  nextSlot(vm, '{ now = time(), cwd = "", replies = {} }');
-  vm.run('STUB.now = STUB.now + 6; STUB.Tick(); WoWAI.Send("hello world")');
-  assert.equal(stripRecords(vm).find(r => r.text === 'hello world').ctx, undefined);
-  vm.run('STUB.zone = "Elwynn Forest"; STUB.posX = 0.1; WoWAI.NewChat("Second"); WoWAI.Send("where am I")');
-  assert.equal(stripRecords(vm).find(r => r.text === 'where am I').ctx, undefined);
+test('every chat message carries sender identity, including alt changes, without research context', () => {
+  const vm = newVM(); login(vm); connect(vm);
+  vm.run('WoWAI.Send("hello world")');
+  const first = stripRecords(vm).find(r => r.text === 'hello world');
+  assert.match(first.ctx, /Character: Testchar\nRealm: Test Realm/);
+  assert.ok(!first.ctx.includes('level') && !first.ctx.includes('Zone:'));
+  vm.run('UnitName=function() return "Other Player" end; GetRealmName=function() return "Other Realm" end; WoWAI.NewChat("Second"); WoWAI.Send("who am I")');
+  assert.match(stripRecords(vm).find(r => r.text === 'who am I').ctx, /Character: Other Player\nRealm: Other Realm/);
+  assert.equal(Buffer.from(vm.evaluate('WoWAIDB.outbox.ctx'), 'hex').toString(), stripRecords(vm).find(r => r.text === 'who am I').ctx);
   vm.run('SlashCmdList.WOWAI("context on")');
   assert.equal(vm.evaluate('WoWAIDB.settings.context'), 'false');
-  assert.ok(stripRecords(vm).filter(r => r.flags === 'h;c').every(r => r.ctx === ''));
-  assert.ok(vm.evaluate('WoWAIDB.chats[2].history[#WoWAIDB.chats[2].history].text').includes('saved addon files'));
 });
 
 test('a shift-clicked link lands in the focused input and is sent as its name plus tooltip', () => {
@@ -616,7 +615,7 @@ test('a sent message is encoded on the strip with the chat folder, then a slot r
   assert.equal(rec.chat, chatId);
   assert.equal(rec.id, id);
   assert.equal(rec.cwd, 'realms');
-  assert.equal(rec.flags, '');
+  assert.equal(rec.flags, 'c');
   // The chat took its title from the first message.
   assert.equal(vm.evaluate('WoWAIDB.chats[1].name'), 'Hello world');
 
@@ -647,7 +646,7 @@ test('a denied reply shows Allow, and Allow resends with the rules as flags', ()
   vm.run(`WoWAI.Allow("${chatId}", { "WebSearch", "Bash(cargo:*)" })`);
   const rec = stripRecords(vm).find(r => r.flags.includes('allow='));
   assert.ok(rec, 'allow record on the strip');
-  assert.equal(rec.flags, 'allow=WebSearch,Bash(cargo:*)');
+  assert.equal(rec.flags, 'allow=WebSearch,Bash(cargo:*);c');
   assert.equal(rec.id, id + 1);
 });
 
@@ -666,7 +665,7 @@ test('a chat can pick its agent: the strip says so, replies are labelled by thei
   vm.run('WoWAI.Send("hello")');
   const chatId = vm.evaluate('WoWAIDB.chats[1].id');
   let rec = stripRecords(vm).find(r => r.text === 'hello');
-  assert.equal(rec.flags, '');
+  assert.equal(rec.flags, 'c');
   assert.equal(vm.evaluate('WoWAIDB.outbox.agent'), null);
   const id = vm.num('WoWAIDB.chats[1].pendingId');
   nextSlot(vm, slot(`{ chat = "${chatId}", id = ${id}, status = "done", text = "hi", agent = "claude" }`));
@@ -680,7 +679,7 @@ test('a chat can pick its agent: the strip says so, replies are labelled by thei
   assert.ok(vm.evaluate('WoWAIDB.chats[1].history[#WoWAIDB.chats[1].history].text').includes('agent set to Codex'));
   vm.run('WoWAI.Send("now with codex")');
   rec = stripRecords(vm).find(r => r.text === 'now with codex');
-  assert.equal(rec.flags, 'agent=codex');
+  assert.equal(rec.flags, 'agent=codex;c');
   assert.equal(vm.evaluate('WoWAIDB.outbox.agent'), 'codex');
   assert.ok(texts().includes('agent: Codex   mode: pixel'));
   const id2 = vm.num('WoWAIDB.chats[1].pendingId');
@@ -691,7 +690,7 @@ test('a chat can pick its agent: the strip says so, replies are labelled by thei
   // Resend keeps the agent flag.
   vm.run('WoWAI.Send("again")');
   vm.run('WoWAI.Resend()');
-  assert.equal(stripRecords(vm).find(r => r.text === 'again').flags, 'agent=codex');
+  assert.equal(stripRecords(vm).find(r => r.text === 'again').flags, 'agent=codex;c');
   vm.run('SlashCmdList.WOWAI("cancel")');
   // A name the bridge did not list is refused; "default" goes back to the bridge's.
   vm.run('SlashCmdList.WOWAI("agent gemini")');
@@ -785,7 +784,7 @@ test('/wow-ai reset marks the next message as a new session', () => {
   vm.run('SlashCmdList.WOWAI("reset")');
   vm.run('WoWAI.Send("start over")');
   const rec = stripRecords(vm).find(r => r.text === 'start over');
-  assert.equal(rec.flags, 'n');
+  assert.equal(rec.flags, 'n;c');
   assert.equal(vm.evaluate('WoWAIDB.chats[1].resetNext'), null);
 });
 

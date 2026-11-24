@@ -27,6 +27,7 @@ LIMITATIONS = (
     "Required skills marked as borrowed retain their provider-reported origin, such as Vanilla; they are not independently verified Forever requirements.",
     "The provider's hidden-recipe and acquisition-location metadata files are cached as source documents, not imported as availability or location assertions.",
     "Synthetic recipe-scroll descriptors are excluded. Missing teaching items do not prove trainer acquisition.",
+    "Teaching-item links use RecipeItems.lua. Differing core item IDs are retained as raw source fields.",
 )
 
 
@@ -102,7 +103,7 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
     for relative in core_paths:
         if relative in (recipe_items_path, acquire_path):
             continue
-        if relative in {f"Data/Forever/_core/{name}.lua" for name in ("HiddenRecipes", "Sources", "SourceNames")}:
+        if relative in {f"Data/Forever/_core/{name}.lua" for name in ("HiddenRecipes", "Sources", "SourceNames", "VendorSources")}:
             # These v1.9 catalogs describe availability and emulator-sourced
             # acquisition, not profession recipe rows. Preserve their source
             # documents without converting them into unsupported Forever facts.
@@ -165,8 +166,9 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
             teaching_id = teaching.get(spell_id)
             if teaching_id is not None:
                 positive_id(teaching_id, "teaching item ID")
-            if fields.get("itemId") is not None and fields["itemId"] != teaching_id:
-                raise ValueError(f"Conflicting teaching-item assertions within package: {spell_id}")
+            core_item_id = fields.get("itemId")
+            if core_item_id is not None:
+                positive_id(core_item_id, "core recipe item ID")
             localized = names[spell_id]
             if not isinstance(localized, dict) or not isinstance(localized.get("name"), str):
                 raise ValueError(f"Missing literal recipe name: {spell_id}")
@@ -174,6 +176,13 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
                           "localized_fields": localized, "locale": "enUS", "names_reference": f"{names_path}#{spell_id}",
                           "acquire_method": acquire.get(spell_id), "is_skill_rank": bool(rank_books.get(spell_id)),
                           "acquisition_reference": f"{acquire_path}#{spell_id}" if spell_id in acquire else None}
+            if core_item_id is not None and core_item_id != teaching_id:
+                attributes["teaching_item_discrepancy"] = {
+                    "core_item_id": core_item_id,
+                    "core_reference": f"{relative}#{spell_id}",
+                    "recipe_items_item_id": teaching_id,
+                    "recipe_items_reference": f"{recipe_items_path}#{spell_id}" if teaching_id is not None else recipe_items_path,
+                }
             if spell_id in borrowed:
                 attributes["borrowed_fields"] = borrowed[spell_id]
                 attributes["required_skill_basis"] = "borrowed:" + borrowed[spell_id]["requiredSkill"]
@@ -195,7 +204,7 @@ def parse_professiondb(root: Path) -> ProfessionDataset:
             if not isinstance(stats,dict) or any(not isinstance(k,str) or type(v) not in (int,float)
                 or not math.isfinite(v) for k,v in stats.items()): raise ValueError('Invalid applied-enchant stats')
             if any(not isinstance(slot,str) for slot in application['slots']): raise ValueError('Invalid enchant slot')
-    fingerprint = hashlib.sha256(json.dumps({'files':identity_hashes,'parser':2}, sort_keys=True).encode()).hexdigest()
+    fingerprint = hashlib.sha256(json.dumps({'files':identity_hashes,'parser':3}, sort_keys=True).encode()).hexdigest()
     enchants=tuple((key,{'applications':value},f'Enchanting applied enchant/{key}') for key,value in enchant_rows.items())
     return ProfessionDataset(root, version.group(1).strip(), builds.pop(), fingerprint, files, tuple(recipes),enchants)
 

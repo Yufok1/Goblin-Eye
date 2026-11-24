@@ -11,6 +11,8 @@ const os = require('os');
 const path = require('path');
 const A = require('../bridge/agents');
 
+const scriptArgs = p => process.platform === 'win32' ? ['--require', path.resolve(__dirname, '../bridge/hidden-child-process.js'), p] : [p];
+
 const SYS = 'The user is talking to you from inside World of Warcraft';
 
 test('agent ids, display names and the legacy Claude config keys', () => {
@@ -309,7 +311,7 @@ test('resolveCommand: a configured script runs with this node, an npm .cmd shim 
   try {
     const script = path.join(tmp, 'cli.js');
     fs.writeFileSync(script, '');
-    assert.deepEqual(A.resolveCommand('claude', { path: script }), { file: process.execPath, args: [script], found: true });
+    assert.deepEqual(A.resolveCommand('claude', { path: script }), { file: process.execPath, args: scriptArgs(script), found: true });
     assert.equal(A.resolveCommand('claude', { path: path.join(tmp, 'missing.exe') }).found, false);
     // npm's Windows launcher: "%_prog%" "%dp0%\node_modules\@openai\codex\bin\codex.js" %*
     const bin = path.join(tmp, 'node_modules', '@openai', 'codex', 'bin');
@@ -317,16 +319,16 @@ test('resolveCommand: a configured script runs with this node, an npm .cmd shim 
     fs.writeFileSync(path.join(bin, 'codex.js'), '');
     const shim = path.join(tmp, 'codex.cmd');
     fs.writeFileSync(shim, '@ECHO off\r\nSETLOCAL\r\nCALL :find_dp0\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
-    assert.deepEqual(A.unwrapShim(shim, A.AGENTS.codex), { file: process.execPath, args: [path.join(bin, 'codex.js')], found: true });
-    assert.deepEqual(A.resolveCommand('codex', { path: shim }), { file: process.execPath, args: [path.join(bin, 'codex.js')], found: true });
+    assert.deepEqual(A.unwrapShim(shim, A.AGENTS.codex), { file: process.execPath, args: scriptArgs(path.join(bin, 'codex.js')), found: true });
+    assert.deepEqual(A.resolveCommand('codex', { path: shim }), { file: process.execPath, args: scriptArgs(path.join(bin, 'codex.js')), found: true });
     // Current npm shims mention "%dp0%\node.exe" before the script.
     const realShim = path.join(tmp, 'codex2.cmd');
     fs.writeFileSync(realShim, 'IF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n)\r\n"%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
-    assert.deepEqual(A.unwrapShim(realShim, A.AGENTS.codex), { file: process.execPath, args: [path.join(bin, 'codex.js')], found: true });
+    assert.deepEqual(A.unwrapShim(realShim, A.AGENTS.codex), { file: process.execPath, args: scriptArgs(path.join(bin, 'codex.js')), found: true });
     // Other generators write %~dp0 and .bat launchers.
     const batShim = path.join(tmp, 'codex3.bat');
     fs.writeFileSync(batShim, '@node "%~dp0\\node_modules\\@openai\\codex\\bin\\codex.js" %*\r\n');
-    assert.deepEqual(A.resolveCommand('codex', { path: batShim }), { file: process.execPath, args: [path.join(bin, 'codex.js')], found: true });
+    assert.deepEqual(A.resolveCommand('codex', { path: batShim }), { file: process.execPath, args: scriptArgs(path.join(bin, 'codex.js')), found: true });
     // Claude's npm package launches a .exe: run it directly.
     const claudeExe = path.join(tmp, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
     fs.mkdirSync(path.dirname(claudeExe), { recursive: true });
@@ -340,7 +342,7 @@ test('resolveCommand: a configured script runs with this node, an npm .cmd shim 
     fs.writeFileSync(grokScript, '#!/usr/bin/env node\n');
     const grokShim = path.join(tmp, 'grok.cmd');
     fs.writeFileSync(grokShim, 'IF EXIST "%dp0%\\node.exe" (\r\n  SET "_prog=%dp0%\\node.exe"\r\n)\r\n"%_prog%"  "%dp0%\\node_modules\\@xai-official\\grok\\bin\\grok" %*\r\n');
-    assert.deepEqual(A.unwrapShim(grokShim, A.AGENTS.grok), { file: process.execPath, args: [grokScript], found: true });
+    assert.deepEqual(A.unwrapShim(grokShim, A.AGENTS.grok), { file: process.execPath, args: scriptArgs(grokScript), found: true });
     const grokExe = path.join(tmp, 'node_modules', '@xai-official', `grok-win32-${process.arch === 'arm64' ? 'arm64' : 'x64'}`, 'bin', 'grok.exe');
     fs.mkdirSync(path.dirname(grokExe), { recursive: true });
     fs.writeFileSync(grokExe, '');
@@ -355,7 +357,7 @@ test('resolveCommand: a configured script runs with this node, an npm .cmd shim 
       fs.writeFileSync(process.env.CODEX_BIN, '');
       assert.deepEqual(A.resolveCommand('codex', {}), { file: process.env.CODEX_BIN, args: [], found: true });
       process.env.CODEX_BIN = shim;
-      assert.deepEqual(A.resolveCommand('codex', {}), { file: process.execPath, args: [path.join(bin, 'codex.js')], found: true });
+      assert.deepEqual(A.resolveCommand('codex', {}), { file: process.execPath, args: scriptArgs(path.join(bin, 'codex.js')), found: true });
     } finally {
       if (oldPath === undefined) delete process.env.CODEX_BIN;
       else process.env.CODEX_BIN = oldPath;
@@ -374,6 +376,12 @@ test('resolveCommand: a configured script runs with this node, an npm .cmd shim 
   }
 });
 
+
+test('Windows job-owned background trees stop directly without launching taskkill',()=>{
+ const child={pid:2099,goblinBackgroundJob:true,kill(){this.killed=true;}};
+ A.killTree(child,{platform:'win32',spawnProcess:()=>assert.fail('job cleanup must not spawn a helper')});
+ assert.equal(child.killed,true);
+});
 
 test('Windows cancellation falls back on a failed taskkill exit and uses literal target arguments',()=>{
  const {EventEmitter}=require('events');const child=new EventEmitter(),helper=new EventEmitter();

@@ -24,6 +24,12 @@ and static source assertions do not prove current in-game availability.
 
 ## Fixed population failures
 
+- AHledger can save a scan with an empty realm field. Scans missing a realm or
+  faction are skipped with timestamps and missing fields in Source health;
+  independently identified scans in the same file still import. Neither older
+  scans nor configured identity is assigned to an unidentified scan. The
+  original saved file stays untouched. Failed unchanged files retry at most once
+  per minute, without repeating the same traceback on every watcher poll.
 - ProfessionDB 1.9 added `LoadBorrowed` annotations and separate metadata files.
   Recipe imports accept the inspected literal format, retain borrowed skill
   origins (374 Vanilla skill annotations in the inspected 1.9 package), and cache
@@ -61,6 +67,9 @@ and static source assertions do not prove current in-game availability.
 - **Mapzeroth coverage** is the static travel graph; it does not import the
   character's flight discoveries, hearthstone or runtime ability calculations.
 - **Alts Forever categories** only populate if that addon has exported them.
+  Its Goblin Eye extension supplies active quests, objective progress, explicit
+  turn-in status and a timestamped login/save location. Existing saves without
+  these fields remain unknown until the updated extension records a new save.
   Opening bank/mail/profession windows in game may be needed for capture; the
   resulting saves import automatically. Missing coverage remains unknown.
 - **GuildRoster and addon UI/configuration files** have no companion research

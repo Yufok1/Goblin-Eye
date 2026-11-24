@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+- Isolate writable agent profiles, AppData, temporary files and tool/model
+  caches under the installation's non-system-drive runtime folder. Reject C:
+  and linked storage paths, preserve supported sign-ins through a one-time
+  import, and retain chat handoffs when provider session stores change.
+
+- Supply a per-chat checkpoint and recent conversation on every agent turn,
+  retaining context through reloads, restarts, Stop and provider/model changes.
+  Hide and validate task checkpoints, preserve legacy transcript recovery, and
+  retry a missing provider session once only before any work has started.
+
+- Review Alts Forever 1.9.1 for the existing observation extension and include
+  detected versions in setup errors. Match Auctionator 351's faction-suffixed
+  regional buckets to selected profiles without inventing realm or region.
+
+- Disable unattended Windows model-discovery CLI launches by default. Saved
+  addon catalogs and configured models remain available; automatic refresh is
+  an explicit `backgroundModelDiscovery` opt-in.
+
+- Skip and report local AHledger scans with missing realm/faction identity
+  without blocking valid scans in the file; back off unchanged import failures
+  and suppress repeated tracebacks while preserving the Source health error.
+
+- Isolate the Windows discovery/speech worker and agent helpers on private
+  desktops, preserve controls through JSON pipes, and reap descendants on exit.
+- Replace full-history freshness scans with indexed capture probes and legacy
+  fallbacks; filter active datasets before world/acquisition discovery and avoid
+  listing-history unions for named item searches. Preserve archived evidence.
+- Restore the observation extension after reviewed Alts Forever 1.8.0 updates,
+  preserving its fourth container-scanner argument for saved variant links.
+
+- Capture active quests, objective progress, turn-in readiness and a separate
+  login/save location through Alts; expose paged research and dashboard views.
+- Support inspected Alts 1.7.0 while preserving its gear-change return flag;
+  retain ProfessionDB vendor metadata and incomplete QuestieDB records without
+  blocking otherwise valid catalogs or inventing missing names/locations.
+- Bound and page source-health responses so public-market metadata cannot
+  overflow the agent response budget.
+
 - Bound Windows agent cleanup and recover from failed taskkill helpers when Stop is requested.
 
 - Fix Windows speech pipe encoding for Unicode punctuation and accented names.

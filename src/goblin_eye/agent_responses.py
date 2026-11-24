@@ -149,6 +149,8 @@ def prepare_response(name, value, detail='compact'):
             character.pop('goblinEyeGear',None)
             character.pop('goblinEyeCharacter',None)
             character.pop('goblinEyeQuests',None)
+            character.pop('goblinEyeQuestLog',None)
+            character.pop('goblinEyeLocation',None)
             value.get('source_payload',{}).pop('recipeInfo',None)
             value['instance_evidence']={}
             for item in value['items']:
@@ -194,7 +196,7 @@ def prepare_response(name, value, detail='compact'):
                     attrs['coordinate_details_omitted']=True
         value['detail_help']='Coordinate samples are incomplete. Read the cached source document for full arrays; samples cannot establish spawn density.'
     value = with_money(value)
-    if name in ('search_world_entities','search_acquisition_sources','get_item_acquisition','get_research_datasets','search_evidence','get_item_variants','get_character_quests','get_character_inventory','get_character_equipment'):
+    if name in ('search_world_entities','search_acquisition_sources','get_item_acquisition','get_research_datasets','search_evidence','get_item_variants','get_character_quests','get_character_active_quests','get_character_inventory','get_character_equipment'):
         value = discovery_page(value, detail)
     if name=='get_item_research' and detail=='full' and size(value)>MAX_RESPONSE_BYTES-1500:
         value=item_summary(value)

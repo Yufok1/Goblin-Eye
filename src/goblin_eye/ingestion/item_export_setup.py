@@ -7,7 +7,12 @@ from .discovery import discover_addon_paths
 # Reviewed schema v2 and scanner contracts. Unknown releases still require review.
 # Live 1.0.1 retains DB v2, full-link slot keys, incomplete-gear return value,
 # container argument layout, ns.db/ns.char and the event registration contract.
-REVIEWED_ALTS_VERSIONS = frozenset(('0.10.0', '0.13.0', '0.16.0', '1.0.1'))
+# 1.7.0 retains these contracts; ScanGear also returns a changed flag, which
+# the extension preserves. Its dispatcher safely ignores unsupported events.
+# 1.8.0 retains DB v2 and adds a fourth ScanContainers argument for retained
+# variant links. The owned wrapper must forward it to preserve addon behavior.
+# 1.9.1 retains these schema, scanner, score and event-dispatch contracts.
+REVIEWED_ALTS_VERSIONS = frozenset(('0.10.0', '0.13.0', '0.16.0', '1.0.1', '1.7.0', '1.8.0', '1.9.1'))
 
 
 def validate_item_export_contract(addon: Path):
@@ -25,16 +30,19 @@ def validate_item_export_contract(addon: Path):
             raise ValueError(f'Unreviewed Alts Forever interface in {toc.name}; export extension not installed')
         version = re.search(r'^## Version:\s*(\S+)\s*$',text,re.M)
         if not version or version[1] not in REVIEWED_ALTS_VERSIONS:
-            raise ValueError(f'Unreviewed Alts Forever version in {toc.name}; export extension not installed')
+            found = version[1] if version else 'missing'
+            raise ValueError(f'Unreviewed Alts Forever version {found} in {toc.name}; export extension not installed')
         versions.add(version[1])
         loaded = {line.strip() for line in text.splitlines()}
         if not {'Core.lua', 'Gear.lua', 'Scanner.lua', 'Upgrades.lua'} <= loaded:
             raise ValueError(f'Alts Forever scanner files missing from {toc.name}; export extension not installed')
     if len(versions) != 1:
         raise ValueError('Alts Forever manifest versions disagree; export extension not installed')
+    containers = (r'^function ns\.ScanContainers\(\s*bags\s*,\s*out\s*,\s*layout\s*,\s*links\s*\)'
+                  if versions <= {'1.8.0', '1.9.1'} else r'^function ns\.ScanContainers\(\s*bags\s*,\s*out\s*,\s*layout\s*\)')
     contracts = (
         ('Gear.lua', r'^function ns\.ScanGear\(\s*c\s*\)'),
-        ('Scanner.lua', r'^function ns\.ScanContainers\(\s*bags\s*,\s*out\s*,\s*layout\s*\)'),
+        ('Scanner.lua', containers),
         ('Upgrades.lua', r'^function ns\.ItemScore\(\s*link\s*,\s*role\s*\)'),
         ('Core.lua', r'^function ns\.On\(\s*event\s*,\s*fn\s*\)'),
     )

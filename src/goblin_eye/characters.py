@@ -130,6 +130,11 @@ class CharacterStore:
                     slot['captured_at']=datetime.fromtimestamp(capture['capturedAt'],timezone.utc).isoformat()
             from goblin_eye.character_capture import sheet, COMPARISON_POLICY
             result['character_stats']=sheet(char,result['raw_reference'],talent_limit,talent_offset)
+            from goblin_eye.quest_capture import location, active_quests
+            result['saved_location']=location(char,result)
+            log=active_quests(char,result,limit=1)
+            result['active_quest_log']={k:v for k,v in log.items() if k not in ('records','offset','limit','next_offset')}
+            result['active_quest_log']['follow_up']='get_character_active_quests(snapshot_id,limit=20,offset=next_offset)'
             result['stat_comparison_policy']=COMPARISON_POLICY
             result["money_copper"] = char.get("money")
             result["money_display"] = {"money_copper": money_label(char["money"])} if char.get("money") is not None else {}
@@ -213,6 +218,18 @@ class CharacterStore:
             total=len(ids),offset=offset,limit=limit,file_saved_at=row['file_saved_at'],imported_at=row['imported_at'],
             source_key='local-questie',freshness={'age_seconds':int(age),'status':'stale' if age>300 else 'recent','timestamp_basis':'Questie save-file time, not a completion query timestamp'},
             raw_reference=row['raw_reference'],interpretation='Questie saved completion assertions. File time is not completion time; absence does not prove eligibility. Match static quest IDs and faction/prerequisites separately.')
+
+    def active_quests(self,snapshot_id,limit=20,offset=0):
+        from goblin_eye.validation import integer
+        from goblin_eye.quest_capture import active_quests, location
+        integer(snapshot_id,'snapshot_id',1); integer(limit,'limit',1,100); integer(offset,'offset')
+        with self.database.transaction() as c:
+            row=c.execute('SELECT * FROM character_snapshots WHERE id=?',(snapshot_id,)).fetchone()
+        if row is None: raise ValueError('Character snapshot not found')
+        char=json.loads(row['payload_json']).get('character',{})
+        result=active_quests(char,row,limit,offset)
+        result.update(snapshot_id=snapshot_id,character_name=row['name'],saved_location=location(char,row))
+        return result
 
     def equipment(self,snapshot_id,limit=10,offset=0):
         from goblin_eye.validation import integer

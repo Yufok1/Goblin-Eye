@@ -3,6 +3,7 @@
   "calculate_trade_scenario",
   "compare_market_scans",
   "get_acquisition_evidence",
+  "get_character_active_quests",
   "get_character_equipment",
   "get_character_inventory",
   "get_character_quests",

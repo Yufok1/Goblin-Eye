@@ -55,13 +55,46 @@ after a restart. Send a new message yourself to continue. Starting the bridge or
 logging in does not resume that instruction. Explicit developer `--once`/`--inject`
 commands remain available for deliberate test requests.
 
+The bridge supplies saved conversation context automatically with every message,
+including an already resumed agent session. It looks up the stable chat ID in
+`wow-ai/bridge/transcripts.json`; there is no transcript search for the agent to
+perform and no user-written handoff note is required. Existing transcripts work
+without migration. Other chats are never used as a fallback for missing history.
+
+Each completed reply can update an internal, validated task checkpoint containing
+the current request, constraints, reported completed work and next step. The
+checkpoint is stripped before display and speech, then saved atomically with the
+chat transcript. If the client omits or malforms it, the bridge still supplies
+verbatim conversation excerpts. This checkpoint is separate from Goblin Eye's
+optional goals/notes database; missing goals do not erase saved chat context.
+
+The handoff includes recent messages and is bounded to 32 KB; Antigravity uses
+a smaller handoff within its command-line limit. The visible transcript retains
+200 messages, while the checkpoint preserves the opening request and latest
+task summary across that rolling limit. Excerpts and omitted messages are
+labelled. These are historical conversation records, not current game facts.
+Relevant character, quest and price evidence must still be refreshed.
+
+Reloads and bridge restarts keep the chat identity. Model, agent, folder and Stop
+changes can start a new provider session while retaining this chat's context.
+An explicit missing-session error before any session/tool/progress activity gets
+one automatic fresh-session attempt with the same handoff; active work and other
+errors are never replayed automatically. Stop still prevents startup from
+resuming an interrupted request. Deleting a chat deletes its checkpoint too.
+
 Use **Chat settings** to select an agent, model and reasoning level. The bridge
-discovers catalogs in the background at startup and every five minutes. Failed
-discovery retries after 30 seconds; Kilo has a 60-second discovery timeout. The
+keeps addon-saved model catalogs available locally. On Windows, automatic CLI
+model probes are disabled by default to avoid unattended console/terminal
+launches while playing. To opt in, set `backgroundModelDiscovery: true` in
+`wow-ai/bridge/config.json` before starting chat. With that option enabled, the
+bridge discovers catalogs at startup and every five minutes; failed discovery
+retries after 30 seconds. Kilo has a 60-second discovery timeout. The
 open menu checks for recovered lists for up to two minutes. The addon saves
 complete catalogs; searching, paging, filtering and selecting models happen
 locally without pixel-strip requests. **Check updates** reads the bridge's latest
-published catalog; it does not launch discovery. In reload transport mode, a manual
+published catalog; it does not launch discovery. With automatic probes disabled,
+it continues to use the saved list or the agent's configured default rather than
+fetching a new catalog. In reload transport mode, a manual
 reload receives updates. The displayed timestamp identifies cached data, and a
 failed refresh keeps the last usable list. Unsupported/unavailable discovery does
 not invent models: use the agent's configured default. Model, variant,
@@ -82,6 +115,24 @@ contents in the scrolling preview. **Add to chat draft** appends it to your
 current draft; every prompt is ready to send unchanged, using conversation and saved context. Browsing
 uses no bridge requests or model calls. The library is generated from
 `docs/prompt-power-pack` when the addon is built.
+
+Every chat message carries the sender's addon-reported name and realm. The AI
+uses that identity to select the matching saved character, including after an
+alt switch. This is conversation metadata; levels, gear, stats and quests still
+come from timestamped saved addon evidence. A missing or ambiguous match remains
+explicitly unknown instead of selecting the newest imported alt.
+
+Voice and model discovery run in a separate Goblin Eye companion worker. WoWAI
+forwards controls and displays its status; the worker owns speech playback,
+voice warming and model refreshes. Existing settings and in-game controls remain
+the same. The launcher manages this worker automatically. If it restarts, saved
+voice settings are restored without replaying old audio.
+
+On Windows, agent CLIs run with a hidden console on a private background desktop.
+Their native helpers inherit that desktop even when requesting a new console.
+Goblin Eye never switches the player's desktop. If desktop creation fails, the
+launch reports an error instead of falling back to a visible window.
+The bundled Python runtime hosts this process; no extra installation is needed.
 
 **Voice settings** provides Windows Desktop speech: Play TL;DR, Play full, Stop,
 Test voice, volume, speed and optional automatic reading. Speech is off by default.
@@ -104,6 +155,35 @@ as can prompts and tool results. Windows speech is local. The bridge does not
 read game memory, inject code, send game inputs or automate gameplay/auctions.
 This describes its behavior, not an endorsement or a guarantee against account
 action. The player performs game actions.
+
+## Local storage
+
+Goblin Eye keeps its database, bridge transcripts and research archives inside
+the extracted folder. Its launchers and child tools use `data/runtime` for their
+private home, AppData, temp files, package caches and speech/model caches. The
+folder must be on a local non-system drive; C: and paths linked back to C: are
+rejected. `GOBLIN_EYE_STORAGE_ROOT` can select another non-system-drive folder.
+This setting affects only Goblin Eye processes, never your Windows environment.
+Installed executables, Windows libraries and other read-only dependencies can
+still be loaded from C:. Your separate Codex desktop app manages its own storage.
+
+On the first start, the bridge copies only supported sign-in and settings files
+into its private home. It leaves shared profiles and caches intact, does not copy
+their histories/plugins/databases, and never overwrites an existing private
+profile. Existing chats keep their saved task context and use fresh provider
+session handles when their storage home changes. No pending action is resumed
+merely because a home changed.
+
+To sign in again or configure a CLI **for Goblin Eye**, run this from the package
+folder, replacing `codex login` with the appropriate agent and CLI arguments:
+
+```powershell
+node wow-ai/bridge/agent-profile.js codex login
+```
+
+This uses the same private home as the chat bridge. Running an ordinary CLI
+separately continues to use that CLI's independent profile. An expired or
+unsupported provider sign-in may still require its normal authentication flow.
 
 Chats, research archives, screenshots, settings, credentials and saved player
 data are private. Do not post them in bug reports or include them in shared ZIPs.

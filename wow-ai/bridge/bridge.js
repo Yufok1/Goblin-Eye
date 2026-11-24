@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 'use strict';
+require('./runtime-storage').activate();
 // WoW AI bridge: the half of WoWAI that lives outside the game.
 //
 //   OUT  capture.ps1 screen-captures the addon's pixel strip -> one or more
@@ -30,6 +31,7 @@ const readline = require('readline');
 const { spawn } = require('child_process');
 const P = require('./protocol'); // the pure protocol code, unit-tested in tests/bridge_test.js
 const A = require('./agents');   // how each agent is launched and read, unit-tested in tests/agents_test.js
+const Continuity = require('./continuity');
 
 const HERE = __dirname;
 const CONFIG_FILE = path.join(HERE, 'config.json');
@@ -39,8 +41,9 @@ const TMP_DIR = path.join(HERE, 'tmp'); // prompt files for agents that read the
 
 const Research = require('./research');
 const {SnapshotWriter} = require('./publisher');
-const {shouldBeat} = require('./activity');
-const {SpeechManager,findReply} = require('./speech');
+const {shouldBeat, noteActivity, activitySnapshot} = require('./activity');
+const {findReply} = require('./speech');
+const {CompanionClient} = require('./companion-client');
 const {randomUUID} = require('crypto');
 const argv = process.argv.slice(2);
 if (argv.includes('--help') || argv.includes('-h')) {
@@ -56,6 +59,15 @@ catch (e) {
   console.error(`Cannot read ${CONFIG_FILE} (${e.message}).\nRun "node setup.js" in the wow-ai folder first.`);
   process.exit(2); // the supervisor doesn't restart on 2
 }
+try {
+  for (const field of ['addonDir', 'inboxFile']) if (cfg[field]) {
+    const target = path.resolve(HERE, cfg[field]);
+    require('./runtime-storage').validateRoot(target);
+    let existing = target;
+    while (!fs.existsSync(existing) && path.dirname(existing) !== existing) existing = path.dirname(existing);
+    require('./runtime-storage').validateRoot(fs.realpathSync(existing));
+  }
+} catch (error) { console.error(error.message); process.exit(2); }
 const once = argv.includes('--once');
 // Acquire before reading or pruning state, transcripts, or publishing any slots.
 try { process.on('exit',require('./instance-lock').acquire(path.join(HERE,'bridge.lock'))); }
@@ -68,10 +80,10 @@ const exitWhenIdle = once || inject !== null;
 const speechAcks = [];
 const controlAcks = [];
 const Models = require('./models');
-const catalog = new Models.ModelCatalog({config:cfg,defaultAgent:cfg.agent||A.DEFAULT_AGENT,onChange:()=>{if(!exitWhenIdle)publishNow();}});
-const speech = new SpeechManager({directory:HERE,log,onChange:()=>{ if (!exitWhenIdle) publishNow(); }});
-process.on('exit',()=>{ if(speech.active)speech.active.kill(); if(speech.worker&&speech.worker!==speech.active)speech.worker.kill(); });
-setImmediate(()=>{if(!exitWhenIdle&&speech.neural?.prewarm===true&&speech.settings.profile!=='desktop')speech.warm();});
+let companionPublishing = false;
+const companion = new CompanionClient({log,onChange:()=>{if(companionPublishing&&!exitWhenIdle)publishNow();}});
+const {catalog,speech} = companion;
+process.on('exit',()=>companion.close());
 
 // The agent chats use unless they pick their own (/wow-ai agent, "agent=" flag).
 const DEFAULT_AGENT = A.normalizeAgent(cfg.agent || A.DEFAULT_AGENT);
@@ -124,6 +136,9 @@ const SAVED_VARS = String(cfg.savedVariablesFile || '').replace(/WoWClaude\.lua$
 let state = readJson(STATE_FILE, { lastId: 0, sessions: {}, handled: {} });
 if (!state.handled) state.handled = {};
 if (!state.sessions) state.sessions = {};
+// The old shared CLI home has different session stores. Keep chat transcripts
+// and task checkpoints, but use a new provider handle in the isolated home.
+require('./runtime-storage').resetSessions(state);
 if (!state.pending) state.pending = {};
 // Older versions stored handled[session] as "highest id so far"; expand to a map.
 for (const [k, v] of Object.entries(state.handled)) {
@@ -159,13 +174,13 @@ function noteMessage(job, role, text) {
   if (job.name) c.name = job.name;
   if (job.cwd) c.cwd = job.cwd;
   if (role === 'user') { c.agent=job.agent; c.options=Models.parseOptions(job.options); }
-  const m = { role, text: String(text ?? ''), id: job.id, t: Math.floor(Date.now() / 1000) };
+  const m = { role, text: String(text ?? ''), id: job.id, session: job.session || '', t: Math.floor(Date.now() / 1000) };
+  if (role === 'system' && job.finishStatus) m.status = job.finishStatus;
   if (job.research) m.research = job.research;
   if (role === 'assistant') m.resources = Research.urls(text);
   if (role === 'assistant' && job.agent) m.agent = job.agent;
   if (role === 'assistant' && job.speech_key) m.speech_key = job.speech_key;
-  c.messages.push(m);
-  while (c.messages.length > 200) c.messages.shift();
+  Continuity.remember(c, m, role === 'assistant' ? job.taskCheckpoint : null);
   c.updated = Date.now();
   saveTranscripts();
 }
@@ -315,7 +330,11 @@ function slotsInstalled() {
 let warnedNoAddon = false;
 function publishNow(urgent = true) {
   lastPublish = Date.now();
-  const records = [...live.values()].slice(-30);
+  const records = [...live.entries()].slice(-30).map(([key, record]) => {
+    const active = running.get(key);
+    return record.status === 'working' && active?.job.id === record.id
+      ? {...record, activity: activitySnapshot(active.job)} : record;
+  });
   const files = [{file:INBOX_FILE, data:slotFile('WoWAI_Inbox', records, urgent)}];
   if (slotsInstalled()) {
     const body = slotFile('WoWAI_SlotData', records, urgent);
@@ -364,9 +383,10 @@ function resetBeats(id) {
 }
 function beat(job) {
   if (!shouldBeat(job)) return;
-  job.beats = (job.beats || 0) + 1;
-  if (job.beats > ACT_MAX) return;
-  try { atomicWrite(actFile(job.id, job.beats), SILENT_WAV); } catch {}
+  if ((job.beats || 0) >= ACT_MAX) return;
+  const next = (job.beats || 0) + 1;
+  try { atomicWrite(actFile(job.id, next), SILENT_WAV); job.beats = next; }
+  catch (error) { log(`activity signal #${job.id} failed (${error.code || 'write error'}); reply-channel activity remains available`); }
 }
 
 // Presence: every 30 s flip the next presence/NNNN.wav valid so the game can tell
@@ -506,7 +526,7 @@ function submit(job) {
       controlAcks.push({session:job.session,id:job.id});if(controlAcks.length>32)controlAcks.shift();
       const result=await publishNow();if(result.written>0&&!result.failures.length)signal('ack',job.id,true);
       if(exitWhenIdle)process.exit(result.failures.length?1:0);
-    });return;
+    }).catch(error=>{log('models:',error.message);if(exitWhenIdle)process.exit(1);});return;
   }
   if (job.voice !== undefined) {
     voiceControlPending = true;
@@ -516,8 +536,7 @@ function submit(job) {
     speech.control(job.voice,job.text,key=>{
       const messages=transcripts.chats[job.chat]?.messages || [];
       return findReply(messages,key);
-    });
-    publishNow().then(result=>{ if(result.written>0 && !result.failures.length)signal('ack',job.id,true); if(exitWhenIdle)process.exit(result.failures.length ? 1 : 0); });
+    }).catch(error=>{log('voice:',error.message);}).then(()=>publishNow()).then(result=>{ if(result.written>0 && !result.failures.length)signal('ack',job.id,true); if(exitWhenIdle)process.exit(result.failures.length ? 1 : 0); });
     return;
   }
   if (job.ctx !== undefined) setContext(job);
@@ -586,6 +605,8 @@ function runJob(job) {
       `\nUse /wow-ai cd <folder> to pick one, or /wow-ai cd alone for the default.`);
     return;
   }
+  try { A.validateProject(cwd); }
+  catch (error) { finish(job, 'error', error.message); return; }
   // Which agent: the chat's own (an "agent=" flag), else the bridge's default.
   const agentId = job.agent ? A.normalizeAgent(job.agent) : DEFAULT_AGENT;
   if (!agentId) {
@@ -627,22 +648,28 @@ function runJob(job) {
     log(`${tag} allowed for ${agentId}: ${job.allow.join(', ')}${added.length ? '' : ' (already allowed)'}`);
   }
   maybeOfferRestore(job);
-  noteMessage(job, 'user', job.text);
+  // Resolve only this stable chat ID before launching any client. The handoff
+  // is supplied on every turn, including valid resumed sessions, so a client's
+  // own compaction/reset cannot make an empty goals database erase the task.
+  if (!Object.hasOwn(job, 'conversationContext')) job.conversationContext = Continuity.forChat(transcripts, job);
+  const conversation = job.conversationContext;
+  if (!job.userRecorded) { noteMessage(job, 'user', job.text); job.userRecorded = true; }
   const resume = state.sessions[skey] || state.sessions[key];
 
-  const ctx = gameContext();
+  // Bind identity to this request, never a different chat's cached hello.
+  const ctx = cfg.gameContext === false ? '' : String(job.ctx || '');
   const system = P.systemPrompt(ctx, primer());
   const systemShort = P.systemPrompt(ctx, '');
   const promptFile = path.join(TMP_DIR, `prompt-${job.id}-${Date.now().toString(36)}.txt`);
   const diagnosticFile = agentId === 'agy' ? promptFile + '.agy.log' : null;
-  const input = agent.input({ prompt: job.text, system, systemShort, resume, cfg: acfg });
+  const input = agent.input({ prompt: job.text, conversation, system, systemShort, resume, cfg: acfg });
   if (input.promptFile !== undefined) {
     try { fs.mkdirSync(TMP_DIR, { recursive: true }); fs.writeFileSync(promptFile, input.promptFile); }
     catch (e) { finish(job, 'error', `Could not write the prompt file ${promptFile}: ${e.message}`); return; }
   }
   let args,env;
   try {
-    args = [...cmd.args, ...agent.args({cfg: acfg, resume, cwd, system, systemShort, promptFile,prompt: job.text, timeoutMs: cfg.timeoutMs})];
+    args = [...cmd.args, ...agent.args({cfg: acfg, resume, cwd, system, systemShort, promptFile,prompt: job.text, conversation, timeoutMs: cfg.timeoutMs})];
     if (diagnosticFile) { fs.mkdirSync(TMP_DIR, {recursive:true}); args.push('--log-file', diagnosticFile); }
     env = agent.env({ ...process.env }, acfg);
   } catch(e) {finish(job,'error',`${agent.name} launch configuration failed: ${e.message}`);return;}
@@ -654,9 +681,9 @@ function runJob(job) {
   } catch (e) { log(`${tag} map file unavailable: ${e.message}`); }
 
   log(`${tag} (${job.via}) ${agent.name} starting in ${cwd}${resume ? ' (resume ' + resume.slice(0, 8) + ')' : ' (new session)'}${ctx ? ' [game context]' : ''}${running.size ? ' [' + (running.size + 1) + ' running]' : ''}`);
-  const child = spawn(cmd.file, args, { cwd, env, windowsHide: true, detached:process.platform !== 'win32', stdio: [input.stdin !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
+  const child = require('./background-process').spawnBackground(cmd.file, args, { cwd, env, windowsHide: true, detached:process.platform !== 'win32', stdio: [input.stdin !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
   running.set(key, { job, child });
-  publish(key, { chat: job.chat, id: job.id, status: 'working', text: resume ? 'thinking...' : 'starting a new session...', cwd, session: resume, agent: agentId }, true);
+  publish(key, { chat: job.chat, id: job.id, status: 'working', text: resume ? 'thinking...' : 'starting a new session...', activity:activitySnapshot(job), cwd, session: resume, agent: agentId }, true);
   if (input.stdin !== undefined) { child.stdin.on('error', () => {}); child.stdin.end(input.stdin); }
 
   const parser = agent.parser();
@@ -671,25 +698,35 @@ function runJob(job) {
   let buffer = '';
   let stdoutText = '';
   let parserError = false;
+  let observedActivity = false;
+  let settled = false, terminalQueued = false;
 
   const pushProgress = (line) => {
-    if (job.cancelled || job.finished) return;
+    if (job.cancelled || job.finished || settled) return;
+    line = Continuity.extractTask(line).text;
+    if (!line) return;
     progress.push(line);
     while (progress.length > 40) progress.shift();
     beat(job);
-    publish(key, { chat: job.chat, id: job.id, status: 'working', text: progress.join('\n'), research: journal.wire(), cwd, session: sessionId, agent: agentId }, false);
+    publish(key, { chat: job.chat, id: job.id, status: 'working', text: progress.join('\n'), activity:activitySnapshot(job), research: journal.wire(), cwd, session: sessionId, agent: agentId }, false);
   };
   if (agent.stream === 'text') pushProgress(`${agent.name} is working (no live progress)`);
   if (input.note) notes.push(input.note);
   // Long thinking stretches produce no tool events; keep the heartbeat alive anyway.
-  const keepalive = setInterval(() => beat(job), 45000);
+  const keepalive = setInterval(() => {
+    if (job.finished || job.cancelled || settled) return;
+    beat(job);
+    publish(key, { chat:job.chat, id:job.id, status:'working', text:progress.join('\n') || 'Waiting for the next agent update.', activity:activitySnapshot(job), research:journal.wire(), cwd, session:sessionId, agent:agentId }, false);
+  }, 45000);
 
   const handleLine = (line) => {
-    if (parserError || job.cancelled || job.finished) return;
+    if (parserError || job.cancelled || job.finished || settled || terminalQueued) return;
     let ev;
     try { ev = JSON.parse(line); } catch { return; }
     if (!ev || typeof ev !== 'object') return;
+    noteActivity(job);
     if (journal.feed(ev, agentId)) {
+      observedActivity = true;
       const current = journal.lastUpdated;
       pushProgress(`${current.status === 'running' ? 'Checking' : current.status === 'error' ? 'Failed' : 'Checked'}: ${current.name}`);
     }
@@ -707,19 +744,34 @@ function runJob(job) {
       log(`${tag} parser error: ${err && err.stack ? err.stack : detail}`);
       return;
     }
-    if (r.session) sessionId = r.session;
+    if (r.session) { sessionId = r.session; observedActivity = true; }
+    if (r.progress.length) observedActivity = true;
     for (const p of r.progress) pushProgress(p);
     for (const d of r.denied) denied.add(d);
     notes.push(...r.notes);
-    if (r.done) result = r.done;
+    if (r.done) {
+      result = r.done;
+      terminalQueued = true;
+      // A valid terminal event is authoritative. MCP grandchildren can retain
+      // stdout after the answer is complete; do not wait for pipe closure.
+      Promise.resolve().then(() => {
+        if (settled || job.finished) return;
+        settleRun(result.error ? 1 : 0);
+        killTree(child);
+      });
+    }
   };
 
   // Decode across chunk boundaries: a UTF-8 character may span two pipe reads.
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
+    if (settled || terminalQueued || job.finished || job.cancelled) return;
     if (agent.stream === 'text') {
       stdoutText += chunk.toString('utf8');
+      // Plain-text adapters cannot prove that work has not started once they
+      // produce output. Never replay such a turn on a later session error.
+      if (stdoutText.trim()) { observedActivity = true; noteActivity(job); beat(job); }
       return;
     }
     buffer += chunk.toString('utf8');
@@ -755,13 +807,16 @@ function runJob(job) {
   };
 
   child.on('error', (err) => {
+    if (settled || job.finished) return;
+    settled = true;
     cleanup();
     readDiagnostics();
     if (job.cancelled) { finish(job, 'stopped', 'Stopped by you. Send a new message when ready.'); return; }
     finish(job, 'error', `Could not start ${agent.name} (${cmd.file}): ${err.message}\nSet agents.${agentId}.path in config.json.`);
   });
 
-  child.on('close', (code) => {
+  function settleRun(code) {
+    if (settled) return;
     cleanup();
     const diagnostics = readDiagnostics();
     if (job.cancelled) { finish(job, 'stopped', 'Stopped by you. Send a new message when ready.'); return; }
@@ -770,7 +825,7 @@ function runJob(job) {
     if (typeof parser.finish === 'function') {
       try {
         const r = parser.finish({ stdout: stdoutText, stderr, code, diagnostics });
-        if (r && r.session) sessionId = r.session;
+        if (r && r.session) { sessionId = r.session; observedActivity = true; }
         if (r && r.done) result = r.done;
         if (r && Array.isArray(r.notes)) notes.push(...r.notes);
       } catch (err) {
@@ -778,6 +833,17 @@ function runJob(job) {
       }
     }
     if (buffer.trim()) handleLine(buffer.trim());
+    settled = true;
+    if (Continuity.missingSession({resume, retried: job.resumeRecoveryAttempted,
+        code, result, stderr: stderr + '\n' + diagnostics, activity: observedActivity})) {
+      job.resumeRecoveryAttempted = true;
+      delete state.sessions[skey]; delete state.sessions[key];
+      saveState();
+      if (running.get(key)?.child === child) running.delete(key);
+      log(`${tag} saved agent session unavailable; restoring this chat's context into a new session`);
+      runJob(job);
+      return;
+    }
     if (sessionId) {
       state.sessions[skey] = sessionId;
       (state.sessionCwd = state.sessionCwd || {})[skey] = cwd;
@@ -797,12 +863,14 @@ function runJob(job) {
     } else {
       finish(job, 'error', `${agent.name} exited with code ${code} and no result.\n${stderr.trim().slice(-1500)}`, sessionId);
     }
-  });
+  }
+  child.on('close', code => { if (settled) { readDiagnostics(); return; } settleRun(code); });
 }
 
 async function finish(job, status, text, session, denied) {
   if (job.finished) return; // spawn failures fire both 'error' and 'close'
   job.finished = true;
+  job.finishStatus = status;
   markHandled(job);
   saveState();
   // A finished reply ends with the "TL;DR:" block the system prompt asks for:
@@ -823,7 +891,10 @@ async function finish(job, status, text, session, denied) {
     job.research.elapsed_ms = agentElapsedMs;
   }
   let macros = [];
+  const recovered = Continuity.extractTask(text);
+  text = recovered.text;
   if (status === 'done') {
+    job.taskCheckpoint = recovered.checkpoint;
     job.speech_key = randomUUID();
     ({ text, summary } = P.splitSummary(text));
     // After the split: a macro block the agent put after "TL;DR:" must not end up
@@ -846,7 +917,7 @@ async function finish(job, status, text, session, denied) {
   const deliveryOK = delivered.written > 0 && delivered.failures.length === 0;
   if (deliveryOK) signal('sig', job.id, true);
   if (status==='done' && deliveryOK && !exitWhenIdle && !forgotten.has(job.chat)) {
-    try {speech.completed(text);} catch(err) {speech.error=err.message;speech.changed();log('voice:',err.message);}
+    try {await speech.completed(text);} catch(err) {log('voice:',err.message);}
   }
   log(`#${job.id}${job.session ? '@' + job.session : ''} ${status} (${text.length} chars${summary ? ', summary ' + summary.length : ', no summary'}; agent ${agentElapsedMs}ms; delivery ${Math.round(delivered.elapsedMs)}ms)`);
   drainQueue();
@@ -958,7 +1029,9 @@ async function recoverStartup() {
 
 async function main() {
 banner();
+await companion.start({directory:HERE,config:cfg,cwd:DEFAULT_CWD,background:!exitWhenIdle});
 await recoverStartup();
+companionPublishing = true;
 if (inject !== null) {
   submit({ id: state.lastId + 1, session: '', chat: '', text: inject, cwd: '', newSession: false, via: 'inject', agent: injectAgent || '' });
 } else {
@@ -966,9 +1039,6 @@ if (inject !== null) {
   if (once) {
     if (running.size === 0 && !voiceControlPending) { console.log('nothing pending'); process.exit(0); }
   } else {
-    // Warm every catalog without waiting for a pixel-strip settings request.
-    void catalog.refreshBackground();
-    setInterval(()=>{void catalog.refreshBackground();},10000);
     setInterval(pollSavedVariables, cfg.pollMs || 750);
     presenceBeat();
     setInterval(presenceBeat, cfg.presenceIntervalMs || 30000);

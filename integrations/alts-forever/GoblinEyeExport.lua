@@ -184,19 +184,19 @@ end
 -- Extend the data addon's own observation points; do not replace its scanners.
 local originalGear = ns.ScanGear
 ns.ScanGear = function(c)
-    local incomplete = originalGear(c)
+    local incomplete, changed = originalGear(c)
     for _, link in pairs(c.gear or {}) do Queue(link) end
     if not incomplete and not (InCombatLockdown and InCombatLockdown()) then
         local slots = {}
         for slot = 1, 19 do slots[slot] = (c.gear or {})[slot] or false end
         c.goblinEyeGear = {capturedAt = time(), slots = slots}
     end
-    return incomplete
+    return incomplete, changed
 end
 
 local originalContainers = ns.ScanContainers
-ns.ScanContainers = function(bags, out, layout)
-    originalContainers(bags, out, layout)
+ns.ScanContainers = function(bags, out, layout, links)
+    originalContainers(bags, out, layout, links)
     local api = C_Container
     if not api or not api.GetContainerItemLink or not api.GetContainerNumSlots then return end
     if InCombatLockdown and InCombatLockdown() then return end
@@ -339,6 +339,82 @@ local function Quests()
     end
     ns.char.goblinEyeQuests = {version=1, capturedAt=time(), completed=completed}
 end
+local function Bool(v)
+    v = Plain(v)
+    if type(v) == "boolean" then return v end
+end
+local function Count(v, maximum)
+    v = Number(v)
+    if v and v >= 0 and v % 1 == 0 and v <= maximum then return v end
+end
+-- Read only the accepted log. Never expand headers, select quests, or infer
+-- turn-in readiness from objective counts. Missing/secret APIs stay unknown.
+local function ActiveQuests()
+    if not ns.char or (InCombatLockdown and InCombatLockdown()) then return end
+    local Q = C_QuestLog
+    local entries, total = Call(Q and Q.GetNumQuestLogEntries)
+    entries, total = Count(entries, 500), Count(total, 100)
+    local _, build = Call(GetBuildInfo)
+    local capture = {version=1, capturedAt=time(), build=Text(build), locale=Text(Call(GetLocale)),
+        status="not_recorded", entries={}, reportedQuestCount=total}
+    if entries and Q and type(Q.GetInfo) == "function" then
+        capture.status = "recorded"
+        local seen = {}
+        for index=1,entries do
+            local info = Call(Q.GetInfo, index)
+            if type(info) ~= "table" then capture.status="partial" else
+                local header = Bool(info.isHeader)
+                local id = Count(info.questID, 99999999)
+                if header == nil then capture.status="partial"
+                elseif not header then
+                    if not id or id == 0 or seen[id] or #capture.entries >= 100 then capture.status="partial" else
+                        seen[id] = true
+                        local row = {questID=id, title=Text(info.title), level=Count(info.level,1000),
+                            readyForTurnIn=Bool(Call(Q.ReadyForTurnIn,id)),
+                            complete=Bool(Call(Q.IsComplete,id)), failed=Bool(Call(Q.IsFailed,id)),
+                            objectives={status="not_recorded",records={}}}
+                        local objectives = Call(Q.GetQuestObjectives,id)
+                        if type(objectives)=="table" then
+                            row.objectives.status="recorded"
+                            for i, objective in ipairs(objectives) do
+                                if i>20 then row.objectives.status="partial"; break end
+                                objective=Plain(objective)
+                                if type(objective)~="table" then row.objectives.status="partial" else
+                                    local item={index=i, text=Text(objective.text), type=Text(objective.type),
+                                        numFulfilled=Count(objective.numFulfilled,100000000),
+                                        numRequired=Count(objective.numRequired,100000000), finished=Bool(objective.finished)}
+                                    if not item.text or item.finished==nil then row.objectives.status="partial" end
+                                    row.objectives.records[#row.objectives.records+1]=item
+                                end
+                            end
+                        end
+                        if not row.title or row.readyForTurnIn==nil or row.objectives.status~="recorded" then capture.status="partial" end
+                        capture.entries[#capture.entries+1]=row
+                    end
+                end
+            end
+        end
+        if total == nil or total ~= #capture.entries then capture.status="partial" end
+    end
+    ns.char.goblinEyeQuestLog=capture
+end
+-- A starting-point observation on login/save only; no movement events or timer.
+local function Location()
+    if not ns.char or (InCombatLockdown and InCombatLockdown()) then return end
+    local M = C_Map
+    local map = Count(Call(M and M.GetBestMapForUnit,"player"),99999999)
+    if map == 0 then map=nil end
+    local position = map and Call(M and M.GetPlayerMapPosition,map,"player")
+    local x,y
+    if type(position)=="table" then x,y=Call(Plain(position.GetXY),position) end
+    x,y=Number(x),Number(y)
+    if not x or not y or x<0 or x>1 or y<0 or y>1 then x,y=nil,nil end
+    local _,build=Call(GetBuildInfo)
+    local zone,subzone=Text(Call(GetZoneText)),Text(Call(GetSubZoneText))
+    ns.char.goblinEyeLocation={version=1,capturedAt=time(),build=Text(build),
+        status=x and "recorded" or (map or zone) and "partial" or "not_recorded",
+        uiMapID=map,x=x,y=y,zone=zone,subZone=subzone}
+end
 local sheetQueued, questsQueued = false, false
 local function SheetSoon(unit)
     if unit and unit ~= "player" then return end
@@ -349,9 +425,11 @@ end
 local function QuestsSoon()
     if questsQueued or not C_Timer or not C_Timer.After then return end
     questsQueued = true
-    C_Timer.After(1, function() questsQueued=false; Quests() end)
+    C_Timer.After(1, function() questsQueued=false; Quests(); ActiveQuests() end)
 end
-ns.On("PLAYER_ENTERING_WORLD", function() SheetSoon(); QuestsSoon() end)
+ns.On("PLAYER_ENTERING_WORLD", function() SheetSoon(); QuestsSoon(); Location() end)
+-- Synchronous capture before SavedVariables flush, including /reload.
+ns.On("PLAYER_LOGOUT", function() Quests(); ActiveQuests(); Location() end)
 ns.On("PLAYER_EQUIPMENT_CHANGED", function() SheetSoon() end)
 ns.On("PLAYER_LEVEL_UP", function() SheetSoon() end)
 ns.On("TRAIT_CONFIG_UPDATED", function() SheetSoon() end)
@@ -359,5 +437,7 @@ ns.On("UNIT_STATS", SheetSoon)
 ns.On("UNIT_AURA", SheetSoon)
 ns.On("SPELL_POWER_CHANGED", function() SheetSoon() end)
 ns.On("QUEST_TURNED_IN", QuestsSoon)
+ns.On("QUEST_ACCEPTED", QuestsSoon)
+ns.On("QUEST_REMOVED", QuestsSoon)
 ns.On("QUEST_LOG_UPDATE", QuestsSoon)
 ns.On("PLAYER_REGEN_ENABLED", function() SheetSoon(); QuestsSoon() end)

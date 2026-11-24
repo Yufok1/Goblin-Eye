@@ -21,7 +21,7 @@ ROOT_FILES = (
     ".gitattributes", ".gitignore", "AGENTS.md", "CHANGELOG.md", "CLAUDE.md",
     "CONTRIBUTING.md", "INSTALL-PYTHON.md", "LICENSE", "README.md",
     "REQUIREMENTS.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md",
-    "Run-Goblin-Eye.ps1", "Start-Agent.cmd", "Start-Goblin-Eye.cmd",
+    "Run-Goblin-Eye.ps1", "Set-Goblin-Eye-Storage.ps1", "runtime-storage.json", "Start-Agent.cmd", "Start-Goblin-Eye.cmd",
     "START-HERE.md", "config.example.json", "requirements.txt",
     "pyproject.toml", "package.json", "package-lock.json",
     "Setup-WoWAI.cmd", "Setup-WoWAI.js", "Start-Goblin-Eye-Chat.cmd",
@@ -42,6 +42,9 @@ EXCLUDED_PARTS = {
 EXCLUDED_ROOTS = {"dist", "build", "releases"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".pyd", ".db", ".sqlite", ".sqlite3", ".log", ".zip"}
 REQUIRED_FILES = (
+    "runtime-storage.json", "Set-Goblin-Eye-Storage.ps1",
+    "wow-ai/bridge/runtime-storage.js", "wow-ai/bridge/storage-permissions.py",
+    "wow-ai/bridge/launch-chat.js", "wow-ai/bridge/agent-profile.js",
     "integrations/alts-forever/GoblinEyeExport.lua",
     "src/goblin_eye/__main__.py",
     "src/goblin_eye/ingestion/static_watcher.py",

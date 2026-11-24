@@ -21,11 +21,13 @@ const os = require('os');
 const path = require('path');
 const { describeToolUse, ruleFor, baseName } = require('./protocol');
 const Research = require('./research');
+const Continuity = require('./continuity');
+const {host} = require('./runtime-storage');
+const installationHome = () => host(process.env, 'HOME') || host(process.env, 'USERPROFILE') || os.homedir();
 
-// Readable one-line progress; the full text remains available to the UI.
+// Progress retains paragraphs but never exposes the internal task checkpoint.
 function snippet(text) {
-  const s = String(text || '').trim().replace(/\s+/g, ' ');
-  return s;
+  return Continuity.excerpt(Continuity.extractTask(text).text, 1800);
 }
 
 function firstLine(s) { return String(s || '').split('\n')[0].slice(0, 110); }
@@ -126,7 +128,9 @@ function codexParser() {
       } else if (ev.type === 'item.completed' && item) {
         if (item.type === 'agent_message') {
           last = String(item.text || '');
-          if (last.trim()) out.progress.push(snippet(last));
+          // A final answer belongs to the terminal result, not the working
+          // bubble. Preserve commentary while waiting for turn.completed.
+          if (last.trim() && item.phase !== 'final_answer' && !/```\s*goblin-continuity\b|\bTL;DR:/i.test(last)) out.progress.push(snippet(last));
         } else if (item.type === 'reasoning') {
           // Private reasoning never becomes a progress bubble.
         } else if (item.type === 'error') {
@@ -460,8 +464,8 @@ const AGENTS = {
     name: 'Claude',
     command: 'claude',
     install: 'https://claude.com/claude-code, then run `claude` once and log in',
-    windowsPaths: () => [path.join(os.homedir(), '.local', 'bin', 'claude.exe')],
-    posixPaths: () => [path.join(os.homedir(), '.local', 'bin', 'claude')],
+    windowsPaths: () => [path.join(installationHome(), '.local', 'bin', 'claude.exe')],
+    posixPaths: () => [path.join(installationHome(), '.local', 'bin', 'claude')],
     args({ cfg, resume, system }) {
       const a = ['-p', '--output-format', 'stream-json', '--verbose', '--permission-mode', cfg.permissionMode || 'acceptEdits'];
       const rules = Array.isArray(cfg.allowedTools) ? cfg.allowedTools.filter(Boolean) : [];
@@ -474,9 +478,9 @@ const AGENTS = {
       if (system) a.push('--append-system-prompt', system);
       return a.concat(Array.isArray(cfg.extraArgs) ? cfg.extraArgs : []);
     },
-    input: ({ prompt, images }) => {
+    input: ({ prompt, images, conversation }) => {
       const attached = images && images.length ? `\n\nAttached screenshots: ${images.join(', ')} — read them with your Read tool` : '';
-      return { stdin: prompt + attached };
+      return { stdin: Continuity.attach(prompt, conversation) + attached };
     },
     env: (env) => { delete env.CLAUDECODE; return env; }, // a bridge started from inside Claude Code can still launch it
     parser: claudeParser,
@@ -504,10 +508,10 @@ const AGENTS = {
       a.push('-'); // the prompt comes on stdin
       return a;
     },
-    input: ({ prompt, system, systemShort, resume, images }) => {
+    input: ({ prompt, system, systemShort, resume, images, conversation }) => {
       const ctx = resume ? systemShort : system;
       const attached = images && images.length ? `\n\nAttached screenshots: ${images.join(', ')} — read them with your Read tool.` : '';
-      return { stdin: (ctx ? contextBlock(ctx) : '') + prompt + attached };
+      return { stdin: (ctx ? contextBlock(ctx) : '') + Continuity.attach(prompt, conversation) + attached };
     },
     env: (env) => env,
     parser: codexParser,
@@ -533,11 +537,11 @@ const AGENTS = {
       for (const image of images || []) if (!String(image).startsWith('-')) a.push('-f', image);
       return a.concat(Array.isArray(cfg.extraArgs) ? cfg.extraArgs : []);
     },
-    input: ({ prompt, system, systemShort, resume, images }) => {
+    input: ({ prompt, system, systemShort, resume, images, conversation }) => {
       // No system-prompt flag, so the game context rides at the top of the prompt
       // the way it does for Codex.
       const ctx = resume ? systemShort : system;
-      return { stdin: (ctx ? contextBlock(ctx) : '') + prompt };
+      return { stdin: (ctx ? contextBlock(ctx) : '') + Continuity.attach(prompt, conversation) };
     },
     env: (env,cfg={}) => (cfg.researchOnly===true || !cfg.permissionMode || cfg.permissionMode==='default') ? require('./kilo-policy').restrictedEnv(env) : env,
     parser: kiloParser,
@@ -547,9 +551,9 @@ const AGENTS = {
     command: 'grok',
     install: 'https://docs.x.ai/build (irm https://x.ai/cli/install.ps1 | iex), then `grok login`',
     windowsPaths: () => [
-      path.join(process.env.GROK_HOME || path.join(os.homedir(), '.grok'), 'bin', 'grok.exe'),
+      path.join(host(process.env, 'GROK_HOME') || path.join(installationHome(), '.grok'), 'bin', 'grok.exe'),
     ],
-    posixPaths: () => [path.join(process.env.GROK_HOME || path.join(os.homedir(), '.grok'), 'bin', 'grok')],
+    posixPaths: () => [path.join(host(process.env, 'GROK_HOME') || path.join(installationHome(), '.grok'), 'bin', 'grok')],
     npmPackage: '@xai-official/grok',
     args({ cfg, resume, cwd, system, promptFile }) {
       const a = ['--no-auto-update', '--output-format', 'streaming-json', '--cwd', cwd, '--prompt-file', promptFile];
@@ -572,9 +576,9 @@ const AGENTS = {
       if (system) a.push('--append-system-prompt', system);
       return a.concat(Array.isArray(cfg.extraArgs) ? cfg.extraArgs : []);
     },
-    input: ({ prompt, images }) => {
+    input: ({ prompt, images, conversation }) => {
       const attached = images && images.length ? `\n\nAttached screenshots: ${images.join(', ')} — read them with your Read tool.` : '';
-      return { promptFile: prompt + attached };
+      return { promptFile: Continuity.attach(prompt, conversation) + attached };
     },
     env: (env) => { env.GROK_DISABLE_AUTOUPDATER = '1'; return env; },
     parser: grokParser,
@@ -582,14 +586,15 @@ const AGENTS = {
   agy: {
     name: 'Antigravity', command: 'agy',
     install: 'Install Google Antigravity CLI (agy) and run `agy` once to log in.',
-    windowsPaths: () => [path.join(process.env.LOCALAPPDATA || '', 'agy', 'bin', 'agy.exe')],
+    windowsPaths: () => [path.join(host(process.env, 'LOCALAPPDATA') || '', 'agy', 'bin', 'agy.exe')],
     posixPaths: () => [],
-    args({ cfg, resume, cwd, prompt, system, systemShort, timeoutMs }) {
+    args({ cfg, resume, cwd, prompt, conversation, system, systemShort, timeoutMs }) {
       const text = String(prompt || '');
       const note = '\n[User prompt truncated to fit the agy command line.]';
       const context = contextBlock(resume ? systemShort || '' : system || '').slice(0, 12000);
       const available = Math.max(0, 24000 - context.length - note.length);
-      const bounded = text.length > available ? text.slice(0, available) + note : text;
+      const bounded = conversation ? Continuity.attach(text, conversation, {maxBytes: available})
+        : text.length > available ? text.slice(0, available) + note : text;
       const a = [`-p=${context}${bounded}`, '--output-format', 'stream-json', '--add-dir', cwd,
         '--print-timeout', `${Math.max(1, Math.ceil((timeoutMs || 1800000) / 1000))}s`];
       const mode = cfg.permissionMode || 'acceptEdits';
@@ -615,9 +620,9 @@ const AGENTS = {
       // R1: hermes never runs with --yolo from the bridge, even via extraArgs.
       return a.concat(Array.isArray(cfg.extraArgs) ? cfg.extraArgs.filter(x => !/^(-y|--yolo)(=.*)?$/.test(String(x))) : []);
     },
-    input: ({ prompt, system, systemShort, resume, images, cfg }) => {
+    input: ({ prompt, system, systemShort, resume, images, cfg, conversation }) => {
       const ctx = resume ? systemShort : system;
-      let text = (ctx ? contextBlock(ctx) : '') + prompt;
+      let text = (ctx ? contextBlock(ctx) : '') + Continuity.attach(prompt, conversation);
       if (images && images.length > 1) text += `\n\nAdditional attached screenshot paths: ${images.slice(1).join(', ')}`;
       const note = cfg && cfg.permissionMode === 'bypassPermissions' ? 'hermes never runs with --yolo from the bridge' : '';
       return { stdin: text, note };
@@ -660,17 +665,25 @@ function agentConfig(cfg, id) {
 // ---------------------------------------------------------------------------
 
 function exists(p) { try { return fs.statSync(p).isFile(); } catch { return false; } }
+function validateProject(dir) {
+  require('./runtime-storage').validateRoot(path.resolve(dir));
+  require('./runtime-storage').validateRoot(fs.realpathSync(dir));
+}
 
 function pathDirs() {
   const sep = process.platform === 'win32' ? ';' : ':';
   const dirs = String(process.env.PATH || '').split(sep).filter(Boolean);
-  if (process.platform === 'win32' && process.env.APPDATA) dirs.push(path.join(process.env.APPDATA, 'npm'));
+  if (process.platform === 'win32' && host(process.env, 'APPDATA')) dirs.push(path.join(host(process.env, 'APPDATA'), 'npm'));
   return dirs;
 }
 
 // A configured path: a script is run with this node, anything else directly.
+function nodeScriptArgs(p) {
+  return process.platform === 'win32'
+    ? ['--require', path.join(__dirname, 'hidden-child-process.js'), p] : [p];
+}
 function fromPath(p) {
-  if (/\.(c|m)?js$/i.test(p)) return { file: process.execPath, args: [p], found: exists(p) };
+  if (/\.(c|m)?js$/i.test(p)) return { file: process.execPath, args: nodeScriptArgs(p), found: exists(p) };
   return { file: p, args: [], found: exists(p) };
 }
 
@@ -689,7 +702,7 @@ function unwrapShim(shim, agent) {
   if (!exists(script)) return null;
   for (const exe of nativeNextTo(script, agent)) if (exists(exe)) return { file: exe, args: [], found: true };
   if (/\.exe$/i.test(script)) return { file: script, args: [], found: true };
-  return { file: process.execPath, args: [script], found: true };
+  return { file: process.execPath, args: nodeScriptArgs(script), found: true };
 }
 
 // Where a package's platform binary would be, relative to its launcher script.
@@ -751,6 +764,7 @@ function killTree(child, {platform=process.platform, spawnProcess=require('child
   if (!child || !child.pid) return;
   const fallback=()=>{try{child.kill();}catch{}};
   if(platform==='win32') {
+    if(child.goblinBackgroundJob) {fallback();return;}
     let helper;
     try{helper=spawnProcess('taskkill',['/pid',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});}
     catch{fallback();return;}
@@ -772,4 +786,5 @@ module.exports = {
   claudeParser, codexParser, grokParser, agyParser, hermesParser, kiloParser, codexItemLine, grokCall, grokRefusal, shellInner,
   kiloToolLine, kiloDenial,
   resolveCommand, unwrapShim, nativeNextTo, killTree,
+  validateProject,
 };

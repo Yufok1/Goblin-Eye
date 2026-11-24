@@ -72,6 +72,64 @@ class AuctionatorFormatTests(unittest.TestCase):
         self.assertEqual(self.profile()['ruleset'], 'unknown')
         self.assertEqual(self.profile()['faction'], 'unknown')
 
+    def test_faction_regional_key_supersedes_bare_and_legacy_buckets_without_pooling(self):
+        configure_market(self.db, Settings(local_realm='Test Realm', local_faction='horde', local_ruleset='pvp'))
+        profile=self.profile();before=dict(profile)
+        selected, skipped=select_auctionator_markets(
+            {'TestRealm':{},'PvP':{},'PvP Horde':{},'PvP Alliance':{},'PvE Horde':{}},profile)
+        self.assertEqual(list(selected),['PvP Horde'])
+        self.assertEqual(selected['PvP Horde'][:2],('unknown','Horde'))
+        self.assertEqual(set(skipped),{'TestRealm','PvP','PvP Alliance','PvE Horde'})
+        self.assertEqual(profile,before)
+
+    def test_faction_regional_key_requires_selected_ruleset_and_matching_profile(self):
+        # Even a literal realm called "PvP" must not make a regional key a
+        # legacy realm/faction assertion, or establish a ruleset implicitly.
+        for values in (dict(realm='PvP',faction='horde'),
+                       dict(realm='Test Realm',faction='alliance',ruleset='pvp'),
+                       dict(ruleset='normal',faction='horde'), dict(ruleset='pvp')):
+            with self.subTest(values=values):
+                profile=dict(self.profile(),**values)
+                with self.assertRaisesRegex(ValueError,'No Auctionator market matches'):
+                    select_auctionator_markets({'PvP Horde':{}},profile)
+        profile=dict(self.profile(),realm='Test Realm',ruleset='pvp')
+        with self.assertRaisesRegex(ValueError,'multiple matching'):
+            select_auctionator_markets({'PvP Horde':{},'PvP Alliance':{}},profile)
+
+    def test_faction_regional_key_never_creates_a_realm_or_region(self):
+        profile=dict(self.profile(),faction='horde',ruleset='pvp')
+        selected,skipped=select_auctionator_markets({'PvP Horde':{}},profile)
+        self.assertEqual(selected['PvP Horde'][:2],('unknown','Horde'))
+        self.assertEqual(skipped,[])
+        self.assertEqual(profile['realm'],'unknown')
+        self.assertEqual(profile['region'],'unknown')
+
+    def test_faction_regional_import_recovers_error_and_retains_capture_scope(self):
+        configure_market(self.db, Settings(local_realm='Test Realm',local_faction='horde',local_ruleset='pvp'))
+        watcher=AuctionatorWatcher(self.db,lambda:[self.path])
+        watcher.scan_once()  # malformed fixture records an initial file error
+        self.path.write_bytes(b'changed fixture')
+        capture=AuctionatorCapture(1790980000,8,{
+            'PvP Horde':{'version':2,'4306':{'m':100,'h':{2467:100}}},
+            'PvP':{'version':2,'4306':{'m':900,'h':{2467:900}}},
+            'TestRealm':{'version':2,'4306':{'m':800,'h':{2467:800}}},
+            'PvP Alliance':{'version':2,'4306':{'m':700,'h':{2467:700}}}})
+        with patch('goblin_eye.ingestion.auctionator.parse_auctionator_file',return_value=capture):
+            result=watcher.scan_once()[0]
+            self.assertEqual(watcher.scan_once(),[])
+        self.assertEqual((result.records,result.snapshots),(1,1))
+        with self.db.transaction() as c:
+            self.assertEqual(c.execute('SELECT current_min_unit_copper FROM price_observations').fetchone()[0],100)
+            self.assertEqual(c.execute('SELECT url FROM source_documents').fetchone()[0],'auctionator-price:PvP Horde')
+            point=c.execute('SELECT observed_at,granularity,limitations_json FROM market_captures').fetchone()
+            self.assertIsNone(point['observed_at'])
+            self.assertEqual(point['granularity'],'daily_capture')
+            self.assertIn('source realm and region are unknown',point['limitations_json'])
+            self.assertEqual(c.execute('SELECT last_status,last_error FROM watched_files').fetchone()[:],('complete',None))
+            profile=market_profile(c)
+        self.assertEqual(profile['realm'],'Test Realm')
+        self.assertEqual(profile['region'],'unknown')
+
     def test_all_supported_rulesets_match_only_the_configured_bucket(self):
         for ruleset, key in [('normal','PvE'), ('pvp','PvP'), ('rp','RP')]:
             profile = dict(self.profile(), realm='Test Realm', ruleset=ruleset)

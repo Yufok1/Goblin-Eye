@@ -140,7 +140,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/characters/"):
             try:
-                value = service.characters.get(int(path.rsplit("/", 1)[-1]))
+                if path.endswith('/active-quests'):
+                    value = service.characters.active_quests(int(path.split('/')[-2]),int(arg('limit','20')),int(arg('offset','0')))
+                else:
+                    value = service.characters.get(int(path.rsplit("/", 1)[-1]))
             except ValueError as exc:
                 self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
                 return

@@ -24,7 +24,7 @@ class ItemGraph:
         if not 1 <= limit <= 100 or offset < 0:
             raise ValueError("limit must be 1–100 and offset must be nonnegative")
         # An item may exist in a scan or recipe even before its name is known.
-        cte = """WITH ids AS (
+        ids = """
             SELECT item_id FROM item_observations UNION SELECT id FROM items
             UNION SELECT item_id FROM auction_rows
             UNION SELECT item_id FROM character_item_observations
@@ -40,17 +40,27 @@ class ItemGraph:
                 JOIN research_datasets d ON d.id=r.dataset_id WHERE d.active=1
             UNION SELECT t.item_id FROM recipe_teaching_items t JOIN recipe_facts r ON r.id=t.recipe_fact_id
                 JOIN research_datasets d ON d.id=r.dataset_id WHERE d.active=1
-        ), ranked_names AS (
-            SELECT item_id,name,position FROM selected_item_names
-        ), catalog AS (
-            SELECT ids.item_id, rn.name FROM ids LEFT JOIN ranked_names rn
-                ON rn.item_id=ids.item_id AND rn.position=1
-        )
         """
+        cte = ('WITH ids AS (' + ids + '''), catalog AS (
+            SELECT ids.item_id, rn.name FROM ids LEFT JOIN selected_item_names rn
+                ON rn.item_id=ids.item_id) ''')
         term = query.strip()
         # Escape LIKE metacharacters: user searches are literal text.
         like = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         where = " WHERE (?='' OR name LIKE ? ESCAPE '\\' COLLATE NOCASE OR CAST(item_id AS TEXT)=?)"
+        if term:
+            # Named results already occur in selected_item_names. Do not union
+            # millions of listing/history rows just to search their names.
+            # Numeric searches also include an ID that has no name yet.
+            numeric_id = int(term) if term.isascii() and term.isdigit() and len(term) <= 18 else None
+            if numeric_id is None:
+                cte = 'WITH catalog AS (SELECT item_id,name FROM selected_item_names) '
+            else:
+                cte = 'WITH ids AS (' + ids + '''), catalog AS (
+                    SELECT item_id,name FROM selected_item_names
+                    UNION ALL SELECT item_id,NULL FROM ids WHERE item_id=''' + str(numeric_id) + '''
+                    AND NOT EXISTS(SELECT 1 FROM selected_item_names n WHERE n.item_id=ids.item_id)
+                ) '''
         with self.database.transaction() as connection:
             total = connection.execute(cte + "SELECT COUNT(*) FROM catalog" + where, (term, like, term)).fetchone()[0]
             rows = connection.execute(cte + "SELECT * FROM catalog" + where +
@@ -132,7 +142,10 @@ class ItemGraph:
             if not row: raise ValueError('Character snapshot not found')
             char=json.loads(row['payload_json']).get('character',{})
             skill=char.get('profs',{}).get(recipe['profession'])
-            known=char.get('recipes',{}).get(recipe['profession'],{}).get(recipe['name']) is True
+            learned = (char.get('recipes') or {}).get(recipe['profession'], {})
+            name = recipe['name']
+            # Alts Forever records lowercase recipe names and can store difficulty 0.
+            known = name is not None and (name in learned or name.lower() in learned)
             plan['character']={'name':row['name'],'captured_at':row['captured_at'],'skill':skill,
                 'learned_recipe_status':'recorded_known' if known else 'not_recorded',
                 'crafter_status':'recorded_profession' if skill is not None else 'needs_other_crafter_or_unrecorded_profession',

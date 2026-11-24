@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test'), assert = require('node:assert/strict');
 const {SnapshotWriter} = require('../bridge/publisher');
-const {shouldBeat} = require('../bridge/activity');
+const {shouldBeat, noteActivity, activitySnapshot} = require('../bridge/activity');
 const R = require('../bridge/research');
 
 test('snapshot publication waits for every file and limits concurrent disk work', async () => {
@@ -46,6 +46,13 @@ test('tool bursts do not exhaust the existing 60 liveness files', () => {
   for(let now=0;now<1800000;now+=100) if(shouldBeat(job,now)) beats++;
   assert.equal(beats,60);
   assert.equal(shouldBeat(job,1799900),false);
+});
+test('activity snapshots distinguish agent events from liveness and elapsed waiting',()=>{
+  const job={startedAt:1000,beats:2};
+  assert.equal(activitySnapshot(job,2000).events,0);
+  assert.equal(activitySnapshot(job,2000).last_event_ago_ms,-1);
+  noteActivity(job,2500);noteActivity(job,3000);
+  assert.deepEqual(activitySnapshot(job,7000),{at_ms:7000,events:2,beats:2,elapsed_ms:6000,last_event_ago_ms:4000});
 });
 
 test('tool previews are reused until evidence or archive identity changes', () => {

@@ -1,0 +1,2385 @@
+{
+  "snapshot_summary": {
+    "name": "Hair Do",
+    "level": 23,
+    "race": "Scourge",
+    "class_token": "WARLOCK",
+    "professions": null,
+    "skills": null,
+    "zone": null,
+    "subzone": null,
+    "money_copper": 18491,
+    "money_display": {
+      "money_copper": "1g 84s 91c"
+    },
+    "stats": null,
+    "captured_at": "2026-11-20T17:33:33+00:00",
+    "talents": null
+  },
+  "inventory_items": {
+    "records": [
+      {
+        "location": "bag",
+        "item_id": 1180,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 1210,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 3174,
+        "quantity": 4
+      },
+      {
+        "location": "bag",
+        "item_id": 5058,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 5165,
+        "quantity": 11
+      },
+      {
+        "location": "bag",
+        "item_id": 5511,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 6624,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 6915,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 6948,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 16189,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 16746,
+        "quantity": 3
+      },
+      {
+        "location": "bag",
+        "item_id": 20558,
+        "quantity": 2
+      },
+      {
+        "location": "bag",
+        "item_id": 248682,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 248683,
+        "quantity": 3
+      },
+      {
+        "location": "bag",
+        "item_id": 248685,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 248702,
+        "quantity": 1
+      },
+      {
+        "location": "bag",
+        "item_id": 250187,
+        "quantity": 1
+      }
+    ],
+    "total": 17,
+    "limit": 20,
+    "offset": 0,
+    "interpretation": "Saved inventory quantities; bank/mail require prior capture. Item IDs alone do not identify suffix variants.",
+    "evidence": {},
+    "detail_help": "Shared provenance is in evidence, indexed by evidence_ref. Use get_world_entity(entity_type,entity_id) for NPC details or get_acquisition_evidence(fact_id=id) for an exact acquisition assertion. Coordinate arrays are summarized; get_world_entity gives focused coordinate samples and cached source documents retain complete records. For item variants use get_item_variants(item_id,item_link); for quests use get_character_quests(snapshot_id). detail=full retains raw fields, with the same response byte budget.",
+    "response_format": "compact",
+    "requested_limit": 20,
+    "returned_count": 17,
+    "next_offset": null,
+    "response_limited": false,
+    "pagination_note": "Read next_offset when present; returned_count may be smaller than requested_limit. A partial page cannot establish absence.",
+    "truncated": false,
+    "currency_units": "Raw money values are copper. 1g = 10000c; 1s = 100c. money_display is computed, rounded to 0.01c for fractional unit prices. Asking prices do not establish sale value."
+  },
+  "equipment": {
+    "records": [
+      {
+        "location": "equipped",
+        "ordinal": 2,
+        "item_id": 281265,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 2,
+        "quantity": 1,
+        "item_link": "|cnIQ2:|Hitem:281265::::::::23:1490::11:::::::|h[Roadwatcher's Confidence]|h|r",
+        "slot_name": "Neck",
+        "equipped_name": "Roadwatcher's Confidence",
+        "equipped_quality_id": 2,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 0,
+            "inventory_type_id": 2,
+            "item_level": 20,
+            "required_level": 0,
+            "quality": "UNCOMMON",
+            "flags": 1,
+            "evidence_basis": "forever_client_tables",
+            "new_in_forever": true,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": "1.60.1.70170",
+            "name": "Roadwatcher's Confidence",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#281265"
+          },
+          "gear": {
+            "inventory_type_id": 2,
+            "item_subclass_id": 0,
+            "required_level": 15,
+            "quality": "UNCOMMON",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {
+              "spi": 3
+            },
+            "stats": {
+              "spirit": 3
+            },
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": "Roadwatcher's Confidence",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#281265"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total.",
+        "source_conflicts": [
+          {
+            "field": "required_level",
+            "assertions": {
+              "catalog": 0,
+              "gear": 15
+            }
+          }
+        ]
+      },
+      {
+        "location": "equipped",
+        "ordinal": 3,
+        "item_id": 10657,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 3,
+        "quantity": 1,
+        "item_link": "|cnIQ2:|Hitem:10657::::::::23:1490::11:::::::|h[Talbar Mantle]|h|r",
+        "slot_name": "Shoulder",
+        "equipped_name": "Talbar Mantle",
+        "equipped_quality_id": 2,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "inventory_type_id": 3,
+            "item_level": 26,
+            "required_level": 0,
+            "quality": "UNCOMMON",
+            "flags": 4,
+            "evidence_basis": "classic_fallback",
+            "new_in_forever": false,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#10657"
+          },
+          "gear": {
+            "inventory_type_id": 3,
+            "item_subclass_id": 1,
+            "required_level": 21,
+            "quality": "UNCOMMON",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {
+              "int": 6,
+              "mp5": 2,
+              "sta": 3
+            },
+            "stats": {
+              "intellect": 6,
+              "mana_per_5_seconds": 2,
+              "stamina": 3
+            },
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#10657"
+          },
+          "tooltip": {
+            "quality": "RARE",
+            "item_level": 26,
+            "required_level": 10,
+            "bind_type": 1,
+            "inventory_type_id": 3,
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "armor": 33,
+            "stats_raw": {
+              "sta": 3,
+              "int": 6,
+              "manargn": 2
+            },
+            "stats": {
+              "stamina": 3,
+              "intellect": 6,
+              "mana_per_5_seconds": 2
+            },
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[10657]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total.",
+        "source_conflicts": [
+          {
+            "field": "quality",
+            "assertions": {
+              "catalog": "UNCOMMON",
+              "gear": "UNCOMMON",
+              "tooltip": "RARE"
+            }
+          },
+          {
+            "field": "required_level",
+            "assertions": {
+              "catalog": 0,
+              "gear": 21,
+              "tooltip": 10
+            }
+          }
+        ]
+      },
+      {
+        "location": "equipped",
+        "ordinal": 5,
+        "item_id": 14133,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 5,
+        "quantity": 1,
+        "item_link": "|cnIQ2:|Hitem:14133::::::::23:1490:::1:12731::::::|h[Ritual Tunic of Stamina]|h|r",
+        "slot_name": "Chest",
+        "equipped_name": "Ritual Tunic of Stamina",
+        "equipped_quality_id": 2,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "inventory_type_id": 5,
+            "item_level": 24,
+            "required_level": 19,
+            "quality": "UNCOMMON",
+            "flags": 4,
+            "evidence_basis": "classic_fallback",
+            "new_in_forever": false,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#14133"
+          },
+          "gear": {
+            "inventory_type_id": 5,
+            "item_subclass_id": 1,
+            "required_level": 19,
+            "quality": "UNCOMMON",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {},
+            "stats": {},
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#14133"
+          },
+          "tooltip": {
+            "quality": "UNCOMMON",
+            "item_level": 24,
+            "required_level": 19,
+            "bind_type": 2,
+            "inventory_type_id": 5,
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "armor": 38,
+            "stats_raw": {},
+            "stats": {},
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[14133]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total."
+      },
+      {
+        "location": "equipped",
+        "ordinal": 6,
+        "item_id": 2911,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 6,
+        "quantity": 1,
+        "item_link": "|cnIQ3:|Hitem:2911::::::::23:1490:::::::::|h[Keller's Girdle]|h|r",
+        "slot_name": "Waist",
+        "equipped_name": "Keller's Girdle",
+        "equipped_quality_id": 3,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "inventory_type_id": 6,
+            "item_level": 23,
+            "required_level": 18,
+            "quality": "RARE",
+            "flags": 4,
+            "evidence_basis": "classic_fallback",
+            "new_in_forever": false,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#2911"
+          },
+          "gear": {
+            "inventory_type_id": 6,
+            "item_subclass_id": 1,
+            "required_level": 18,
+            "quality": "RARE",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {
+              "int": 8,
+              "sta": 3
+            },
+            "stats": {
+              "intellect": 8,
+              "stamina": 3
+            },
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#2911"
+          },
+          "tooltip": {
+            "quality": "RARE",
+            "item_level": 23,
+            "required_level": 18,
+            "bind_type": 2,
+            "inventory_type_id": 6,
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "armor": 23,
+            "stats_raw": {
+              "sta": 3,
+              "int": 8
+            },
+            "stats": {
+              "stamina": 3,
+              "intellect": 8
+            },
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[2911]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total."
+      },
+      {
+        "location": "equipped",
+        "ordinal": 7,
+        "item_id": 6568,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 7,
+        "quantity": 1,
+        "item_link": "|cnIQ2:|Hitem:6568::::::::23:1490:::1:12731::::::|h[Shimmering Trousers of Stamina]|h|r",
+        "slot_name": "Legs",
+        "equipped_name": "Shimmering Trousers of Stamina",
+        "equipped_quality_id": 2,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "inventory_type_id": 7,
+            "item_level": 24,
+            "required_level": 19,
+            "quality": "UNCOMMON",
+            "flags": 4,
+            "evidence_basis": "classic_fallback",
+            "new_in_forever": false,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#6568"
+          },
+          "gear": {
+            "inventory_type_id": 7,
+            "item_subclass_id": 1,
+            "required_level": 19,
+            "quality": "UNCOMMON",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {},
+            "stats": {},
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#6568"
+          },
+          "tooltip": {
+            "quality": "UNCOMMON",
+            "item_level": 24,
+            "required_level": 19,
+            "bind_type": 2,
+            "inventory_type_id": 7,
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "armor": 33,
+            "stats_raw": {},
+            "stats": {},
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[6568]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total."
+      },
+      {
+        "location": "equipped",
+        "ordinal": 8,
+        "item_id": 14374,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 8,
+        "quantity": 1,
+        "item_link": "|cnIQ2:|Hitem:14374::::::::23:1490::1::1:28:5237:::::|h[Sanguine Sandals]|h|r",
+        "slot_name": "Feet",
+        "equipped_name": "Sanguine Sandals",
+        "equipped_quality_id": 2,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "inventory_type_id": 8,
+            "item_level": 24,
+            "required_level": 19,
+            "quality": "UNCOMMON",
+            "flags": 4,
+            "evidence_basis": "classic_fallback",
+            "new_in_forever": false,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#14374"
+          },
+          "gear": {
+            "inventory_type_id": 8,
+            "item_subclass_id": 1,
+            "required_level": 19,
+            "quality": "UNCOMMON",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {
+              "int": 4,
+              "sta": 4
+            },
+            "stats": {
+              "intellect": 4,
+              "stamina": 4
+            },
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#14374"
+          },
+          "tooltip": {
+            "quality": "UNCOMMON",
+            "item_level": 24,
+            "required_level": 19,
+            "bind_type": 2,
+            "inventory_type_id": 8,
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "armor": 26,
+            "stats_raw": {
+              "sta": 4,
+              "int": 4
+            },
+            "stats": {
+              "stamina": 4,
+              "intellect": 4
+            },
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[14374]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total."
+      },
+      {
+        "location": "equipped",
+        "ordinal": 9,
+        "item_id": 3647,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 9,
+        "quantity": 1,
+        "item_link": "|cnIQ2:|Hitem:3647::::::::23:1490::1:::::::|h[Bright Bracers]|h|r",
+        "slot_name": "Wrist",
+        "equipped_name": "Bright Bracers",
+        "equipped_quality_id": 2,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "inventory_type_id": 9,
+            "item_level": 23,
+            "required_level": 18,
+            "quality": "UNCOMMON",
+            "flags": 4,
+            "evidence_basis": "classic_fallback",
+            "new_in_forever": false,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#3647"
+          },
+          "gear": {
+            "inventory_type_id": 9,
+            "item_subclass_id": 1,
+            "required_level": 18,
+            "quality": "UNCOMMON",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {
+              "int": 4
+            },
+            "stats": {
+              "intellect": 4
+            },
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#3647"
+          },
+          "tooltip": {
+            "quality": "UNCOMMON",
+            "item_level": 23,
+            "required_level": 18,
+            "bind_type": 2,
+            "inventory_type_id": 9,
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "armor": 16,
+            "stats_raw": {
+              "int": 4
+            },
+            "stats": {
+              "intellect": 4
+            },
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[3647]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total."
+      },
+      {
+        "location": "equipped",
+        "ordinal": 10,
+        "item_id": 270030,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 10,
+        "quantity": 1,
+        "item_link": "|cnIQ2:|Hitem:270030::::::::23:1490::11:::::::|h[Tattered Mittens]|h|r",
+        "slot_name": "Hands",
+        "equipped_name": "Tattered Mittens",
+        "equipped_quality_id": 2,
+        "item_properties": {
+          "tooltip": {
+            "quality": "RARE",
+            "item_level": 28,
+            "required_level": 16,
+            "bind_type": null,
+            "inventory_type_id": 10,
+            "item_class_id": 4,
+            "item_subclass_id": 1,
+            "armor": 29,
+            "stats_raw": {
+              "sta": 8,
+              "spi": 6,
+              "spldmg": 4
+            },
+            "stats": {
+              "stamina": 8,
+              "spirit": 6,
+              "spell_damage": 4
+            },
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[270030]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total."
+      },
+      {
+        "location": "equipped",
+        "ordinal": 11,
+        "item_id": 6414,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 11,
+        "quantity": 1,
+        "item_link": "|cnIQ3:|Hitem:6414::::::::23:1490::11:::::::|h[Seal of Sylvanas]|h|r",
+        "slot_name": "Finger 1",
+        "equipped_name": "Seal of Sylvanas",
+        "equipped_quality_id": 3,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 0,
+            "inventory_type_id": 11,
+            "item_level": 29,
+            "required_level": 0,
+            "quality": "RARE",
+            "flags": 4,
+            "evidence_basis": "classic_fallback",
+            "new_in_forever": false,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#6414"
+          },
+          "gear": {
+            "inventory_type_id": 11,
+            "item_subclass_id": 0,
+            "required_level": 24,
+            "quality": "RARE",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {
+              "ap": 6,
+              "sta": 8
+            },
+            "stats": {
+              "stamina": 8
+            },
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#6414"
+          },
+          "tooltip": {
+            "quality": "RARE",
+            "item_level": 29,
+            "required_level": 18,
+            "bind_type": 1,
+            "inventory_type_id": 11,
+            "item_class_id": 4,
+            "item_subclass_id": -2,
+            "armor": 0,
+            "stats_raw": {
+              "sta": 8,
+              "atkpwr": 6
+            },
+            "stats": {
+              "stamina": 8,
+              "attack_power": 6
+            },
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[6414]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total.",
+        "source_conflicts": [
+          {
+            "field": "required_level",
+            "assertions": {
+              "catalog": 0,
+              "gear": 24,
+              "tooltip": 18
+            }
+          }
+        ]
+      },
+      {
+        "location": "equipped",
+        "ordinal": 12,
+        "item_id": 11982,
+        "enchant_id": 0,
+        "random_suffix": null,
+        "slot_id": 12,
+        "quantity": 1,
+        "item_link": "|cnIQ2:|Hitem:11982::::::::23:1490:::1:12738::::::|h[Viridian Band of Concentration]|h|r",
+        "slot_name": "Finger 2",
+        "equipped_name": "Viridian Band of Concentration",
+        "equipped_quality_id": 2,
+        "item_properties": {
+          "catalog": {
+            "item_class_id": 4,
+            "item_subclass_id": 0,
+            "inventory_type_id": 11,
+            "item_level": 23,
+            "required_level": 18,
+            "quality": "UNCOMMON",
+            "flags": 4,
+            "evidence_basis": "classic_fallback",
+            "new_in_forever": false,
+            "changed_from_classic": false,
+            "catalog_build": "1.60.1.70170",
+            "source_builds": [
+              "1.60.1.70170"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemCatalogData.lua#11982"
+          },
+          "gear": {
+            "inventory_type_id": 11,
+            "item_subclass_id": 0,
+            "required_level": 18,
+            "quality": "UNCOMMON",
+            "flags": 0,
+            "class_mask": 0,
+            "stats_raw": {},
+            "stats": {},
+            "evidence_basis": "mixed_forever_references",
+            "stats_scope": "base_item",
+            "catalog_build": null,
+            "source_builds": [
+              "1.60.1.70205",
+              "70291"
+            ],
+            "game_build": null,
+            "name": null,
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "GearData.lua#11982"
+          },
+          "tooltip": {
+            "quality": "UNCOMMON",
+            "item_level": 23,
+            "required_level": 18,
+            "bind_type": 2,
+            "inventory_type_id": 11,
+            "item_class_id": 4,
+            "item_subclass_id": -2,
+            "armor": 0,
+            "stats_raw": {},
+            "stats": {},
+            "stats_scope": "base_item",
+            "effects": [],
+            "evidence_basis": "wowhead_forever",
+            "game_build": "1.60.1.70170",
+            "evidence_ref": "item-dataset-13",
+            "raw_reference": "ItemStatsData.lua#ITEM_STATS[11982]"
+          }
+        },
+        "instance_stats_status": "unresolved_bonus_and_enchant",
+        "instance_stats_note": "Static base stats exclude unverified bonus IDs, suffixes and enchants; do not assert an exact equipped total."
+      }
+    ],
+    "total": 14,
+    "limit": 10,
+    "offset": 0,
+    "item_property_evidence": {
+      "item-dataset-13": {
+        "source_key": "foreverguide-items",
+        "source_version": "1.39.22",
+        "retrieved_at": "2026-11-15T22:17:45.980754+00:00",
+        "source_url": "https://www.curseforge.com/wow/addons/forever-guide",
+        "dataset_sha256": "ae34bc7141b130efaebeccae5fcd9ad02b3950ee145acb0acc18f94fd1d13687",
+        "limitations": [
+          "Installed static catalogs are source assertions, not current equipped-item tooltips.",
+          "Catalog, gear and tooltip variants retain separate builds and upstream bases; conflicts are not merged.",
+          "Base item stats exclude unverified random bonuses and enchants. Missing stats are unknown, not zero.",
+          "F means bundled Wowhead Forever data; C means Classic fallback. Neither is a live client observation."
+        ]
+      }
+    },
+    "interpretation": "Exact saved equipment observations; API stats, static base views and enchant assertions remain separate. Missing stats are unknown, not zero.",
+    "evidence": {},
+    "detail_help": "Shared provenance is in evidence, indexed by evidence_ref. Use get_world_entity(entity_type,entity_id) for NPC details or get_acquisition_evidence(fact_id=id) for an exact acquisition assertion. Coordinate arrays are summarized; get_world_entity gives focused coordinate samples and cached source documents retain complete records. For item variants use get_item_variants(item_id,item_link); for quests use get_character_quests(snapshot_id). detail=full retains raw fields, with the same response byte budget.",
+    "response_format": "compact",
+    "requested_limit": 10,
+    "returned_count": 10,
+    "next_offset": 10,
+    "response_limited": false,
+    "pagination_note": "Read next_offset when present; returned_count may be smaller than requested_limit. A partial page cannot establish absence.",
+    "truncated": true,
+    "currency_units": "Raw money values are copper. 1g = 10000c; 1s = 100c. money_display is computed, rounded to 0.01c for fractional unit prices. Asking prices do not establish sale value."
+  },
+  "quests": {
+    "status": "recorded",
+    "records": [
+      {
+        "quest_id": 8,
+        "completed": true
+      },
+      {
+        "quest_id": 264,
+        "completed": true
+      },
+      {
+        "quest_id": 354,
+        "completed": true
+      },
+      {
+        "quest_id": 355,
+        "completed": true
+      },
+      {
+        "quest_id": 356,
+        "completed": true
+      },
+      {
+        "quest_id": 357,
+        "completed": true
+      },
+      {
+        "quest_id": 358,
+        "completed": true
+      },
+      {
+        "quest_id": 359,
+        "completed": true
+      },
+      {
+        "quest_id": 360,
+        "completed": true
+      },
+      {
+        "quest_id": 361,
+        "completed": true
+      },
+      {
+        "quest_id": 362,
+        "completed": true
+      },
+      {
+        "quest_id": 363,
+        "completed": true
+      },
+      {
+        "quest_id": 364,
+        "completed": true
+      },
+      {
+        "quest_id": 365,
+        "completed": true
+      },
+      {
+        "quest_id": 366,
+        "completed": true
+      },
+      {
+        "quest_id": 367,
+        "completed": true
+      },
+      {
+        "quest_id": 368,
+        "completed": true
+      },
+      {
+        "quest_id": 369,
+        "completed": true
+      },
+      {
+        "quest_id": 370,
+        "completed": true
+      },
+      {
+        "quest_id": 371,
+        "completed": true
+      }
+    ],
+    "total": 183,
+    "offset": 0,
+    "limit": 20,
+    "file_saved_at": "2026-11-20T16:50:22.648295+00:00",
+    "imported_at": "2026-11-20T16:50:23.347128+00:00",
+    "source_key": "local-questie",
+    "freshness": {
+      "age_seconds": 2886,
+      "status": "stale",
+      "timestamp_basis": "Questie save-file time, not a completion query timestamp"
+    },
+    "raw_reference": "file:///D:/World%20of%20Warcraft/_forever_/WTF/Account/314679015%231/SavedVariables/Questie.lua#QuestieConfig/char/Hair Do/complete",
+    "interpretation": "Questie saved completion assertions. File time is not completion time; absence does not prove eligibility. Match static quest IDs and faction/prerequisites separately.",
+    "evidence": {},
+    "detail_help": "Shared provenance is in evidence, indexed by evidence_ref. Use get_world_entity(entity_type,entity_id) for NPC details or get_acquisition_evidence(fact_id=id) for an exact acquisition assertion. Coordinate arrays are summarized; get_world_entity gives focused coordinate samples and cached source documents retain complete records. For item variants use get_item_variants(item_id,item_link); for quests use get_character_quests(snapshot_id). detail=full retains raw fields, with the same response byte budget.",
+    "response_format": "compact",
+    "requested_limit": 20,
+    "returned_count": 20,
+    "next_offset": 20,
+    "response_limited": false,
+    "pagination_note": "Read next_offset when present; returned_count may be smaller than requested_limit. A partial page cannot establish absence.",
+    "truncated": true,
+    "currency_units": "Raw money values are copper. 1g = 10000c; 1s = 100c. money_display is computed, rounded to 0.01c for fractional unit prices. Asking prices do not establish sale value."
+  },
+  "active_quests": {
+    "status": "recorded",
+    "captured_at": "2026-11-19T09:37:05+00:00",
+    "imported_at": "2026-11-20T17:33:35.964136+00:00",
+    "game_build": "70959",
+    "source_key": "local-alts-forever",
+    "raw_reference": "file:///D:/World%20of%20Warcraft/_forever_/WTF/Account/314679015%231/SavedVariables/AltsForever.lua#AltsForeverDB/chars/Hair Do/goblinEyeQuestLog",
+    "evidence_kind": "observed",
+    "freshness": {
+      "age_seconds": 115283,
+      "status": "stale",
+      "timestamp_basis": "client capture time; not live state"
+    },
+    "records": [
+      {
+        "quest_id": 235,
+        "title": "The Ashenvale Hunt",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 1221,
+        "title": "Blueleaf Tubers",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 92401,
+        "title": "A Frightened Request",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 530,
+        "title": "A Husband's Revenge",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 516,
+        "title": "Beren's Peril",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 480,
+        "title": "The Weaver",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 6543,
+        "title": "The Warsong Reports",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 1069,
+        "title": "Deepmoss Spider Eggs",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 95774,
+        "title": "Her Name Is Olgra",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 878,
+        "title": "Tribes at War",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 1483,
+        "title": "Ziz Fizziks",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 868,
+        "title": "Egg Hunt",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 893,
+        "title": "Weapons of Choice",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 3369,
+        "title": "In Nightmares",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 264,
+        "title": "Until Death Do Us Part",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 1130,
+        "title": "Melor Sends Word",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 1508,
+        "title": "Blind Cazul",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 65601,
+        "title": "Love Hurts",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      },
+      {
+        "quest_id": 1740,
+        "title": "The Orb of Soran'ruk",
+        "level": 0,
+        "ready_for_turn_in": false,
+        "complete": false,
+        "failed": false,
+        "objectives_status": "recorded",
+        "objectives": []
+      }
+    ],
+    "total": 19,
+    "limit": 20,
+    "offset": 0,
+    "next_offset": null,
+    "reported_quest_count": 19,
+    "interpretation": "Accepted quests at capture time, separate from completed-quest history. Missing flags/progress are unknown. Partial or missing capture cannot establish an empty log. Use quest IDs with world evidence for starters, objectives and turn-ins; static catalogs remain current enrichment.",
+    "snapshot_id": 88,
+    "character_name": "Hair Do",
+    "saved_location": {
+      "status": "partial",
+      "captured_at": "2026-11-19T09:37:05+00:00",
+      "imported_at": "2026-11-20T17:33:35.964136+00:00",
+      "game_build": "70959",
+      "source_key": "local-alts-forever",
+      "raw_reference": "file:///D:/World%20of%20Warcraft/_forever_/WTF/Account/314679015%231/SavedVariables/AltsForever.lua#AltsForeverDB/chars/Hair Do/goblinEyeLocation",
+      "evidence_kind": "observed",
+      "freshness": {
+        "age_seconds": 115283,
+        "status": "stale",
+        "timestamp_basis": "client capture time; not live state"
+      },
+      "coordinate_units": "normalized_0_to_1",
+      "interpretation": "Position observed on login/save only. It may differ from the current starting point; no movement tracking.",
+      "zone": "The Barrens",
+      "subzone": "Agama'gor",
+      "ui_map_id": null,
+      "x": null,
+      "y": null
+    },
+    "evidence": {},
+    "detail_help": "Shared provenance is in evidence, indexed by evidence_ref. Use get_world_entity(entity_type,entity_id) for NPC details or get_acquisition_evidence(fact_id=id) for an exact acquisition assertion. Coordinate arrays are summarized; get_world_entity gives focused coordinate samples and cached source documents retain complete records. For item variants use get_item_variants(item_id,item_link); for quests use get_character_quests(snapshot_id). detail=full retains raw fields, with the same response byte budget.",
+    "response_format": "compact",
+    "requested_limit": 20,
+    "returned_count": 19,
+    "response_limited": false,
+    "pagination_note": "Read next_offset when present; returned_count may be smaller than requested_limit. A partial page cannot establish absence.",
+    "truncated": false,
+    "currency_units": "Raw money values are copper. 1g = 10000c; 1s = 100c. money_display is computed, rounded to 0.01c for fractional unit prices. Asking prices do not establish sale value."
+  },
+  "economic_summary": {
+    "product": "Goblin Eye",
+    "queried_at": "2026-11-20T17:38:30.903675+00:00",
+    "market_key": "wow-forever",
+    "auction_context": {
+      "name": "WoW Forever",
+      "market_key": "wow-forever",
+      "auction_sources": "Local addon scans and separately identified public community markets",
+      "public_markets": [
+        {
+          "market_key": "forever.normal.alliance.cn",
+          "name": "WoW Forever \u00b7 Normal Alliance CN (community)",
+          "faction": "alliance",
+          "ruleset": "normal",
+          "region": "cn"
+        },
+        {
+          "market_key": "forever.normal.alliance.eu",
+          "name": "WoW Forever \u00b7 Normal Alliance EU (community)",
+          "faction": "alliance",
+          "ruleset": "normal",
+          "region": "eu"
+        },
+        {
+          "market_key": "forever.normal.alliance.kr",
+          "name": "WoW Forever \u00b7 Normal Alliance KR (community)",
+          "faction": "alliance",
+          "ruleset": "normal",
+          "region": "kr"
+        },
+        {
+          "market_key": "forever.normal.alliance.us",
+          "name": "WoW Forever \u00b7 Normal Alliance US (community)",
+          "faction": "alliance",
+          "ruleset": "normal",
+          "region": "us"
+        },
+        {
+          "market_key": "forever.normal.horde.cn",
+          "name": "WoW Forever \u00b7 Normal Horde CN (community)",
+          "faction": "horde",
+          "ruleset": "normal",
+          "region": "cn"
+        },
+        {
+          "market_key": "forever.normal.horde.eu",
+          "name": "WoW Forever \u00b7 Normal Horde EU (community)",
+          "faction": "horde",
+          "ruleset": "normal",
+          "region": "eu"
+        },
+        {
+          "market_key": "forever.normal.horde.kr",
+          "name": "WoW Forever \u00b7 Normal Horde KR (community)",
+          "faction": "horde",
+          "ruleset": "normal",
+          "region": "kr"
+        },
+        {
+          "market_key": "forever.normal.horde.us",
+          "name": "WoW Forever \u00b7 Normal Horde US (community)",
+          "faction": "horde",
+          "ruleset": "normal",
+          "region": "us"
+        },
+        {
+          "market_key": "forever.pvp.alliance.cn",
+          "name": "WoW Forever \u00b7 PvP Alliance CN (community)",
+          "faction": "alliance",
+          "ruleset": "pvp",
+          "region": "cn"
+        },
+        {
+          "market_key": "forever.pvp.alliance.eu",
+          "name": "WoW Forever \u00b7 PvP Alliance EU (community)",
+          "faction": "alliance",
+          "ruleset": "pvp",
+          "region": "eu"
+        },
+        {
+          "market_key": "forever.pvp.alliance.kr",
+          "name": "WoW Forever \u00b7 PvP Alliance KR (community)",
+          "faction": "alliance",
+          "ruleset": "pvp",
+          "region": "kr"
+        },
+        {
+          "market_key": "forever.pvp.alliance.us",
+          "name": "WoW Forever \u00b7 PvP Alliance US (community)",
+          "faction": "alliance",
+          "ruleset": "pvp",
+          "region": "us"
+        },
+        {
+          "market_key": "forever.pvp.horde.cn",
+          "name": "WoW Forever \u00b7 PvP Horde CN (community)",
+          "faction": "horde",
+          "ruleset": "pvp",
+          "region": "cn"
+        },
+        {
+          "market_key": "forever.pvp.horde.eu",
+          "name": "WoW Forever \u00b7 PvP Horde EU (community)",
+          "faction": "horde",
+          "ruleset": "pvp",
+          "region": "eu"
+        },
+        {
+          "market_key": "forever.pvp.horde.kr",
+          "name": "WoW Forever \u00b7 PvP Horde KR (community)",
+          "faction": "horde",
+          "ruleset": "pvp",
+          "region": "kr"
+        },
+        {
+          "market_key": "forever.pvp.horde.us",
+          "name": "WoW Forever \u00b7 PvP Horde US (community)",
+          "faction": "horde",
+          "ruleset": "pvp",
+          "region": "us"
+        },
+        {
+          "market_key": "forever.rp.alliance.cn",
+          "name": "WoW Forever \u00b7 RP Alliance CN (community)",
+          "faction": "alliance",
+          "ruleset": "rp",
+          "region": "cn"
+        },
+        {
+          "market_key": "forever.rp.alliance.eu",
+          "name": "WoW Forever \u00b7 RP Alliance EU (community)",
+          "faction": "alliance",
+          "ruleset": "rp",
+          "region": "eu"
+        },
+        {
+          "market_key": "forever.rp.alliance.kr",
+          "name": "WoW Forever \u00b7 RP Alliance KR (community)",
+          "faction": "alliance",
+          "ruleset": "rp",
+          "region": "kr"
+        },
+        {
+          "market_key": "forever.rp.alliance.us",
+          "name": "WoW Forever \u00b7 RP Alliance US (community)",
+          "faction": "alliance",
+          "ruleset": "rp",
+          "region": "us"
+        },
+        {
+          "market_key": "forever.rp.horde.cn",
+          "name": "WoW Forever \u00b7 RP Horde CN (community)",
+          "faction": "horde",
+          "ruleset": "rp",
+          "region": "cn"
+        },
+        {
+          "market_key": "forever.rp.horde.eu",
+          "name": "WoW Forever \u00b7 RP Horde EU (community)",
+          "faction": "horde",
+          "ruleset": "rp",
+          "region": "eu"
+        },
+        {
+          "market_key": "forever.rp.horde.kr",
+          "name": "WoW Forever \u00b7 RP Horde KR (community)",
+          "faction": "horde",
+          "ruleset": "rp",
+          "region": "kr"
+        },
+        {
+          "market_key": "forever.rp.horde.us",
+          "name": "WoW Forever \u00b7 RP Horde US (community)",
+          "faction": "horde",
+          "ruleset": "rp",
+          "region": "us"
+        },
+        {
+          "market_key": "forever.rppvp.alliance.cn",
+          "name": "WoW Forever \u00b7 RP PvP Alliance CN (community)",
+          "faction": "alliance",
+          "ruleset": "rppvp",
+          "region": "cn"
+        },
+        {
+          "market_key": "forever.rppvp.alliance.eu",
+          "name": "WoW Forever \u00b7 RP PvP Alliance EU (community)",
+          "faction": "alliance",
+          "ruleset": "rppvp",
+          "region": "eu"
+        },
+        {
+          "market_key": "forever.rppvp.alliance.kr",
+          "name": "WoW Forever \u00b7 RP PvP Alliance KR (community)",
+          "faction": "alliance",
+          "ruleset": "rppvp",
+          "region": "kr"
+        },
+        {
+          "market_key": "forever.rppvp.alliance.us",
+          "name": "WoW Forever \u00b7 RP PvP Alliance US (community)",
+          "faction": "alliance",
+          "ruleset": "rppvp",
+          "region": "us"
+        },
+        {
+          "market_key": "forever.rppvp.horde.cn",
+          "name": "WoW Forever \u00b7 RP PvP Horde CN (community)",
+          "faction": "horde",
+          "ruleset": "rppvp",
+          "region": "cn"
+        },
+        {
+          "market_key": "forever.rppvp.horde.eu",
+          "name": "WoW Forever \u00b7 RP PvP Horde EU (community)",
+          "faction": "horde",
+          "ruleset": "rppvp",
+          "region": "eu"
+        },
+        {
+          "market_key": "forever.rppvp.horde.kr",
+          "name": "WoW Forever \u00b7 RP PvP Horde KR (community)",
+          "faction": "horde",
+          "ruleset": "rppvp",
+          "region": "kr"
+        },
+        {
+          "market_key": "forever.rppvp.horde.us",
+          "name": "WoW Forever \u00b7 RP PvP Horde US (community)",
+          "faction": "horde",
+          "ruleset": "rppvp",
+          "region": "us"
+        }
+      ],
+      "public_feed": {
+        "source_key": "ahledger",
+        "preferred_reference": "forever.pvp.horde.us",
+        "role": "Separate reference market; never substitute public quotes for local availability"
+      },
+      "faction": "horde",
+      "ruleset": "pvp",
+      "region": "us",
+      "realm": "CAMWOW US2 Realm 8 PvP",
+      "legacy_market_requires_review": false,
+      "legacy_market_key": null,
+      "reset_at": null,
+      "generic_auction_imports_enabled": false,
+      "reset_boundary_status": "missing",
+      "reset_boundary_warning": "No reset cutoff is stored. Historical reset filtering is unavailable.",
+      "identity_basis": "Explicit local configuration and source-reported scan fields; unknown values are not inferred",
+      "instructions": "Use wow-forever for this installation only. Each database holds one local market profile. Historical wow-forever-legacy evidence has unverified market identity and must be queried separately. Do not infer faction, ruleset or region from a realm name. Public markets retain their own source and identity. Compare only explicitly identified markets, preserve capture timestamps and explain transfer assumptions. Asking prices do not establish completed sales."
+    },
+    "source_count": 14,
+    "observed_markets": [
+      {
+        "market_key": "wow-forever",
+        "name": "WoW Forever",
+        "region": "us",
+        "ruleset": "pvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": "2026-11-20T17:12:46+00:00",
+        "latest_precise_price_capture": null,
+        "latest_aggregate_date": "2026-11-17",
+        "latest_capture_import": "2026-11-17T17:04:20.118882+00:00"
+      },
+      {
+        "market_key": "forever.normal.alliance.cn",
+        "name": "WoW Forever \u00b7 Normal Alliance CN (community)",
+        "region": "cn",
+        "ruleset": "normal",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T15:13:18+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T16:48:44.761516+00:00"
+      },
+      {
+        "market_key": "forever.normal.alliance.eu",
+        "name": "WoW Forever \u00b7 Normal Alliance EU (community)",
+        "region": "eu",
+        "ruleset": "normal",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:04:00+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.normal.alliance.kr",
+        "name": "WoW Forever \u00b7 Normal Alliance KR (community)",
+        "region": "kr",
+        "ruleset": "normal",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-14T23:48:43+00:00",
+        "latest_aggregate_date": "2026-11-14",
+        "latest_capture_import": "2026-11-15T20:09:52.019145+00:00"
+      },
+      {
+        "market_key": "forever.normal.alliance.us",
+        "name": "WoW Forever \u00b7 Normal Alliance US (community)",
+        "region": "us",
+        "ruleset": "normal",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:17:57+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.normal.horde.cn",
+        "name": "WoW Forever \u00b7 Normal Horde CN (community)",
+        "region": "cn",
+        "ruleset": "normal",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T11:41:29+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.normal.horde.eu",
+        "name": "WoW Forever \u00b7 Normal Horde EU (community)",
+        "region": "eu",
+        "ruleset": "normal",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:02:15+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.normal.horde.kr",
+        "name": "WoW Forever \u00b7 Normal Horde KR (community)",
+        "region": "kr",
+        "ruleset": "normal",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:23:12+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.normal.horde.us",
+        "name": "WoW Forever \u00b7 Normal Horde US (community)",
+        "region": "us",
+        "ruleset": "normal",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:06:24+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.pvp.alliance.cn",
+        "name": "WoW Forever \u00b7 PvP Alliance CN (community)",
+        "region": "cn",
+        "ruleset": "pvp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T16:00:52+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.pvp.alliance.eu",
+        "name": "WoW Forever \u00b7 PvP Alliance EU (community)",
+        "region": "eu",
+        "ruleset": "pvp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T16:49:50+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.pvp.alliance.kr",
+        "name": "WoW Forever \u00b7 PvP Alliance KR (community)",
+        "region": "kr",
+        "ruleset": "pvp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-18T08:42:11+00:00",
+        "latest_aggregate_date": "2026-11-18",
+        "latest_capture_import": "2026-11-20T03:28:44.547750+00:00"
+      },
+      {
+        "market_key": "forever.pvp.alliance.us",
+        "name": "WoW Forever \u00b7 PvP Alliance US (community)",
+        "region": "us",
+        "ruleset": "pvp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:11:14+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.pvp.horde.cn",
+        "name": "WoW Forever \u00b7 PvP Horde CN (community)",
+        "region": "cn",
+        "ruleset": "pvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-19T13:55:29+00:00",
+        "latest_aggregate_date": "2026-11-19",
+        "latest_capture_import": "2026-11-20T03:28:44.547750+00:00"
+      },
+      {
+        "market_key": "forever.pvp.horde.eu",
+        "name": "WoW Forever \u00b7 PvP Horde EU (community)",
+        "region": "eu",
+        "ruleset": "pvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:02:02+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.pvp.horde.kr",
+        "name": "WoW Forever \u00b7 PvP Horde KR (community)",
+        "region": "kr",
+        "ruleset": "pvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:23:12+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.pvp.horde.us",
+        "name": "WoW Forever \u00b7 PvP Horde US (community)",
+        "region": "us",
+        "ruleset": "pvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T16:46:01+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rp.alliance.cn",
+        "name": "WoW Forever \u00b7 RP Alliance CN (community)",
+        "region": "cn",
+        "ruleset": "rp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:20:49+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rp.alliance.eu",
+        "name": "WoW Forever \u00b7 RP Alliance EU (community)",
+        "region": "eu",
+        "ruleset": "rp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:07:04+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rp.alliance.kr",
+        "name": "WoW Forever \u00b7 RP Alliance KR (community)",
+        "region": "kr",
+        "ruleset": "rp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:23:12+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rp.alliance.us",
+        "name": "WoW Forever \u00b7 RP Alliance US (community)",
+        "region": "us",
+        "ruleset": "rp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T14:31:02+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T15:13:13.071304+00:00"
+      },
+      {
+        "market_key": "forever.rp.horde.cn",
+        "name": "WoW Forever \u00b7 RP Horde CN (community)",
+        "region": "cn",
+        "ruleset": "rp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:20:50+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rp.horde.eu",
+        "name": "WoW Forever \u00b7 RP Horde EU (community)",
+        "region": "eu",
+        "ruleset": "rp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-19T19:22:55+00:00",
+        "latest_aggregate_date": "2026-11-19",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rp.horde.kr",
+        "name": "WoW Forever \u00b7 RP Horde KR (community)",
+        "region": "kr",
+        "ruleset": "rp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:23:13+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rp.horde.us",
+        "name": "WoW Forever \u00b7 RP Horde US (community)",
+        "region": "us",
+        "ruleset": "rp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T13:32:41+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T14:09:03.908974+00:00"
+      },
+      {
+        "market_key": "forever.rppvp.alliance.cn",
+        "name": "WoW Forever \u00b7 RP PvP Alliance CN (community)",
+        "region": "cn",
+        "ruleset": "rppvp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:20:52+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rppvp.alliance.eu",
+        "name": "WoW Forever \u00b7 RP PvP Alliance EU (community)",
+        "region": "eu",
+        "ruleset": "rppvp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:15:52+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rppvp.alliance.kr",
+        "name": "WoW Forever \u00b7 RP PvP Alliance KR (community)",
+        "region": "kr",
+        "ruleset": "rppvp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:23:13+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rppvp.alliance.us",
+        "name": "WoW Forever \u00b7 RP PvP Alliance US (community)",
+        "region": "us",
+        "ruleset": "rppvp",
+        "faction": "alliance",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T16:11:51+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rppvp.horde.cn",
+        "name": "WoW Forever \u00b7 RP PvP Horde CN (community)",
+        "region": "cn",
+        "ruleset": "rppvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:20:53+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rppvp.horde.eu",
+        "name": "WoW Forever \u00b7 RP PvP Horde EU (community)",
+        "region": "eu",
+        "ruleset": "rppvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T16:52:41+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rppvp.horde.kr",
+        "name": "WoW Forever \u00b7 RP PvP Horde KR (community)",
+        "region": "kr",
+        "ruleset": "rppvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T17:23:13+00:00",
+        "latest_aggregate_date": null,
+        "latest_capture_import": "2026-11-20T17:22:09.714722+00:00"
+      },
+      {
+        "market_key": "forever.rppvp.horde.us",
+        "name": "WoW Forever \u00b7 RP PvP Horde US (community)",
+        "region": "us",
+        "ruleset": "rppvp",
+        "faction": "horde",
+        "is_verified": 0,
+        "latest_listing_scan": null,
+        "latest_precise_price_capture": "2026-11-20T14:17:16+00:00",
+        "latest_aggregate_date": "2026-11-20",
+        "latest_capture_import": "2026-11-20T15:13:13.071304+00:00"
+      }
+    ],
+    "record_counts": {
+      "items": 0,
+      "item_observations": 8004,
+      "recipes": 0,
+      "vendors": 0,
+      "mobs": 0,
+      "camps": 0,
+      "snapshots": 11,
+      "listings": 0,
+      "price_observations": 836603,
+      "source_documents": 12931,
+      "research_datasets": 7,
+      "recipe_facts": 5012,
+      "reagent_facts": 16774,
+      "world_entity_facts": 58693,
+      "acquisition_facts": 325108,
+      "travel_nodes": 1023,
+      "travel_edges": 357,
+      "auction_rows": 2079793,
+      "item_instance_facts": 3255,
+      "character_quest_snapshots": 171,
+      "enchant_facts": 246,
+      "dungeon_labels": 35,
+      "dungeon_memberships": 656
+    },
+    "stored_record_counts": {
+      "items": 0,
+      "item_observations": 8004,
+      "recipes": 0,
+      "vendors": 0,
+      "mobs": 0,
+      "camps": 0,
+      "snapshots": 11,
+      "listings": 0,
+      "price_observations": 836603,
+      "source_documents": 12931,
+      "research_datasets": 18,
+      "recipe_facts": 12535,
+      "reagent_facts": 42003,
+      "world_entity_facts": 175832,
+      "acquisition_facts": 651262,
+      "travel_nodes": 1023,
+      "travel_edges": 357,
+      "auction_rows": 2079793,
+      "item_instance_facts": 3255,
+      "character_quest_snapshots": 171,
+      "enchant_facts": 736,
+      "dungeon_labels": 105,
+      "dungeon_memberships": 1968
+    },
+    "freshness": {
+      "local_prices": [
+        {
+          "market_key": "wow-forever",
+          "source_key": "local-auctionator",
+          "observed_at": null,
+          "observed_date": "2026-11-17",
+          "imported_at": "2026-11-17T17:04:20.118882+00:00",
+          "evidence_count": 10,
+          "has_evidence": true,
+          "status": "date_only",
+          "timestamp_precision": "date",
+          "age_hours": null,
+          "is_stale": null
+        },
+        {
+          "market_key": "wow-forever",
+          "source_key": "local-ahledger",
+          "observed_at": "2026-11-20T17:12:46+00:00",
+          "observed_date": null,
+          "imported_at": "2026-11-20T17:33:42.715316+00:00",
+          "evidence_count": 11,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.43,
+          "is_stale": false
+        }
+      ],
+      "local_listing_scans": [
+        {
+          "market_key": "wow-forever",
+          "source_key": "local-ahledger",
+          "observed_at": "2026-11-20T17:12:46+00:00",
+          "observed_date": null,
+          "imported_at": "2026-11-20T17:33:42.715316+00:00",
+          "evidence_count": 11,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.43,
+          "is_stale": false
+        }
+      ],
+      "public_references": [
+        {
+          "market_key": "forever.normal.alliance.cn",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T15:13:18+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T16:48:44.761516+00:00",
+          "evidence_count": 35,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 2.42,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.normal.alliance.eu",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T17:04:00+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 172,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.57,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.normal.alliance.kr",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-14T23:48:43+00:00",
+          "observed_date": "2026-11-14",
+          "imported_at": "2026-11-15T20:09:52.019145+00:00",
+          "evidence_count": 1,
+          "has_evidence": true,
+          "status": "stale",
+          "timestamp_precision": "instant",
+          "age_hours": 137.83,
+          "is_stale": true
+        },
+        {
+          "market_key": "forever.normal.alliance.us",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T17:17:57+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 156,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.34,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.normal.horde.cn",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T11:41:29+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 23,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 5.95,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.normal.horde.eu",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T17:02:15+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 155,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.6,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.normal.horde.us",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T17:06:24+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 143,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.53,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.pvp.alliance.cn",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T16:00:52+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 41,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 1.63,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.pvp.alliance.eu",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T16:49:50+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 150,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.81,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.pvp.alliance.kr",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-18T08:42:11+00:00",
+          "observed_date": "2026-11-18",
+          "imported_at": "2026-11-20T03:28:44.547750+00:00",
+          "evidence_count": 4,
+          "has_evidence": true,
+          "status": "stale",
+          "timestamp_precision": "instant",
+          "age_hours": 56.94,
+          "is_stale": true
+        },
+        {
+          "market_key": "forever.pvp.alliance.us",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T17:11:14+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 168,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.45,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.pvp.horde.cn",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-19T13:55:29+00:00",
+          "observed_date": "2026-11-19",
+          "imported_at": "2026-11-20T03:28:44.547750+00:00",
+          "evidence_count": 56,
+          "has_evidence": true,
+          "status": "stale",
+          "timestamp_precision": "instant",
+          "age_hours": 27.72,
+          "is_stale": true
+        },
+        {
+          "market_key": "forever.pvp.horde.eu",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T17:02:02+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 179,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.61,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.pvp.horde.us",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T16:46:01+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 175,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.87,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.rp.alliance.eu",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T17:07:04+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 34,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.52,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.rp.alliance.us",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T14:31:02+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T15:13:13.071304+00:00",
+          "evidence_count": 45,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 3.12,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.rp.horde.eu",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-19T19:22:55+00:00",
+          "observed_date": "2026-11-19",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 35,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 22.26,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.rp.horde.us",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T13:32:41+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T14:09:03.908974+00:00",
+          "evidence_count": 32,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 4.1,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.rppvp.alliance.eu",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T17:15:52+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 85,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.38,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.rppvp.alliance.us",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T16:11:51+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 111,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 1.44,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.rppvp.horde.eu",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T16:52:41+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T17:22:09.714722+00:00",
+          "evidence_count": 81,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.76,
+          "is_stale": false
+        },
+        {
+          "market_key": "forever.rppvp.horde.us",
+          "source_key": "ahledger",
+          "observed_at": "2026-11-20T14:17:16+00:00",
+          "observed_date": "2026-11-20",
+          "imported_at": "2026-11-20T15:13:13.071304+00:00",
+          "evidence_count": 49,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 3.35,
+          "is_stale": false
+        }
+      ],
+      "characters": [
+        {
+          "name": "Hair Do",
+          "character_key": "alts-forever:915ef99c2de9a26f8e9f2e63:Hair Do",
+          "observed_at": "2026-11-20T17:33:33+00:00",
+          "observed_date": null,
+          "imported_at": "2026-11-20T17:33:35.964136+00:00",
+          "evidence_count": 1,
+          "has_evidence": true,
+          "status": "recent",
+          "timestamp_precision": "instant",
+          "age_hours": 0.08,
+          "is_stale": false
+        },
+        {
+          "name": "Toasty Steedo",
+          "character_key": "alts-forever:915ef99c2de9a26f8e9f2e63:Toasty Steedo",
+          "observed_at": "2026-11-05T01:50:28+00:00",
+          "observed_date": null,
+          "imported_at": "2026-11-19T05:53:31.262526+00:00",
+          "evidence_count": 1,
+          "has_evidence": true,
+          "status": "stale",
+          "timestamp_precision": "instant",
+          "age_hours": 375.8,
+          "is_stale": true
+        }
+      ],
+      "characters_truncated": false,
+      "interpretation": "Import time never establishes observation freshness. Date-only prices have unknown intraday age. Public reference markets cannot establish local pricing readiness.",
+      "newest_snapshot": "2026-11-20T17:12:46+00:00",
+      "is_stale": false
+    },
+    "safety": "Observational and advisory only; every in-game action remains manual.",
+    "currency_units": "Raw money values are copper. 1g = 10000c; 1s = 100c. money_display is computed, rounded to 0.01c for fractional unit prices. Asking prices do not establish sale value."
+  }
+}

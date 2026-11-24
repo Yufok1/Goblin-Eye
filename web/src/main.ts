@@ -212,6 +212,27 @@ function renderNextData(): void {
 }
 
 type CharacterSummary = { snapshot_id: number; name: string; realm: string | null; race: string | null; class_token: string; level: number; game_build: string | null; source_key: string; imported_at: string; captured_at: string | null };
+type ActiveQuestPage = {status:string; captured_at?:string; total:number; next_offset:number|null; records:{quest_id:number;title:string|null;ready_for_turn_in:boolean|null;failed:boolean|null;objectives_status:string;objectives:{text:string|null;fulfilled:number|null;required:number|null;finished:boolean|null}[]}[]; saved_location:{status:string;zone?:string;subzone?:string;ui_map_id?:number;x?:number|null;y?:number|null;captured_at?:string}};
+
+async function showActiveQuests(snapshotId:number, request:number, offset=0):Promise<void> {
+  try {
+    const page=await fetchJson<ActiveQuestPage>(`/api/characters/${snapshotId}/active-quests?limit=20&offset=${offset}`);
+    if(request!==detailRequest) return;
+    const panel=$("#character-quests");
+    if(offset===0) {
+      const loc=page.saved_location;
+      const coords=loc.x!=null && loc.y!=null ? ` · ${(loc.x*100).toFixed(1)}, ${(loc.y*100).toFixed(1)} (map ${loc.ui_map_id})` : " · Coordinates unknown";
+      panel.innerHTML=`<h4>Saved starting location</h4><p>${esc(loc.subzone || loc.zone || "Not captured")}${esc(coords)}<br><span class="muted">Captured ${esc(loc.captured_at ?? "unknown")} · May differ from your current position.</span></p><h4>Active quests</h4><p class="muted">${esc(page.status.replaceAll("_"," "))} · Captured ${esc(page.captured_at ?? "unknown")} · ${page.total} saved quests</p>`;
+      if(!page.total) panel.insertAdjacentHTML("beforeend",`<p>${page.status==="recorded" ? "Your saved quest log was empty." : "Active quests have not been fully captured. Load the updated Alts extension, then save with /reload or logout."}</p>`);
+    }
+    panel.querySelector("[data-more-quests]")?.remove();
+    panel.insertAdjacentHTML("beforeend",page.records.map(q=>`<article class="source-card"><h4>${esc(q.title ?? `Quest ${q.quest_id}`)}</h4><p>${q.ready_for_turn_in===true ? "Ready to turn in" : q.failed===true ? "Failed" : q.ready_for_turn_in===false ? "In progress" : "Turn-in status unknown"} · Quest ${q.quest_id}</p>${q.objectives.length ? `<ul>${q.objectives.map(o=>`<li>${esc(o.text ?? "Objective text unavailable")}${o.fulfilled!=null && o.required!=null ? ` (${o.fulfilled}/${o.required})` : ""}${o.finished===true ? " · Complete" : ""}</li>`).join("")}</ul>` : ""}${q.objectives_status!=="recorded" ? '<p class="muted">Objective details are incomplete.</p>' : ""}</article>`).join(""));
+    if(page.next_offset!=null) {
+      panel.insertAdjacentHTML("beforeend",'<button data-more-quests>Load more quests</button>');
+      panel.querySelector("[data-more-quests]")?.addEventListener("click",()=>void showActiveQuests(snapshotId,request,page.next_offset!));
+    }
+  } catch(error) { if(request===detailRequest) $("#character-quests").textContent=`Could not load active quests: ${error}`; }
+}
 type CharacterSnapshot = CharacterSummary & { limitations: string[]; confidence_basis: string; money_copper?: number; coverage?: Record<string,{status:string}>; character?: {faction?:string;zone?:string;hearth?:string;xp?:number;xpMax?:number;profs?:Record<string,number>;profMax?:Record<string,number>;recipes?:Record<string,Record<string,boolean>>;reps?:Record<string,number>;dura?:number}; source_payload?: {factions?:Record<string,string>}; items: { location: string; item_id: number; quantity?: number; item_link?:string; enchant_id: number | null; random_suffix: number | null; slot_id: number | null }[] };
 
 async function showCharacter(snapshotId: number): Promise<void> {
@@ -225,6 +246,8 @@ async function showCharacter(snapshotId: number): Promise<void> {
     $("#detail-content").innerHTML = `<p class="eyebrow">Saved character observation</p><h3>${esc(character.name)}${character.realm ? ` · ${esc(character.realm)}` : ""}</h3><p class="muted">Level ${esc(character.level)} ${character.race ? esc(character.race) : ""} ${esc(character.class_token)} · Source ${esc(character.source_key)}<br>Build ${esc(character.game_build ?? "unknown")} · Saved ${esc(character.captured_at ?? "time unknown")} · Imported ${esc(character.imported_at)}</p>${context}${locations.map(location => `<h4>${esc(location)}</h4>${character.items.filter(item => item.location === location).map(item => `<div class="calc-row">${itemLink(item.item_id,item.item_link?.match(/\|h\[([^\]]+)\]/)?.[1])}<span>× ${esc(item.quantity ?? 1)}${item.slot_id === null ? "" : ` · Slot ${esc(item.slot_id)}`}${item.enchant_id === null ? "" : ` · Enchant ${esc(item.enchant_id)}`}${item.random_suffix === null ? "" : ` · Suffix ${esc(item.random_suffix)}`}</span></div>`).join("")}`).join("")}<h4>Evidence limits</h4><ul>${character.limitations.map(value => `<li>${esc(value)}</li>`).join("")}</ul><p class="muted">${esc(character.confidence_basis)}</p>`;
     $("#detail-content").querySelectorAll<HTMLElement>("[data-item]").forEach(button => button.addEventListener("click", () => void showItem(Number(button.dataset.item))));
     $(".app-shell").classList.add("detail-open");
+    $("#detail-content").insertAdjacentHTML("afterbegin",'<section id="character-quests"><p>Loading active quests…</p></section>');
+    void showActiveQuests(snapshotId,request);
   } catch (error) { if (request === detailRequest) { $("#detail-content").textContent = `Could not load character: ${error}`; $(".app-shell").classList.add("detail-open"); } }
 }
 

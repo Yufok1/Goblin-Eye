@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import threading
+import time
 from goblin_eye.auction_policy import policy, local_market, market_profile, matches_profile
 
 from goblin_eye.repository import Database
@@ -50,9 +51,11 @@ def parse_scan_file(path: Path) -> list[dict]:
             raise ValueError("Invalid scan timestamp or count")
         if type(raw["full"]) is not bool:
             raise ValueError("Invalid completeness claim")
-        if any(not isinstance(raw[key], str) or not raw[key] for key in ("realm", "faction", "region", "build", "addon", "data")):
-            raise ValueError("Missing scan identity")
-        if raw["faction"] not in ("Alliance", "Horde", "unknown"):
+        if any(not isinstance(raw[key], str) for key in ("realm", "faction", "region", "build", "addon", "data")):
+            raise ValueError("Invalid scan text field")
+        if any(not raw[key].strip() for key in ("build", "addon", "data")):
+            raise ValueError("Missing scan build, addon or auction data")
+        if raw["faction"] not in ("Alliance", "Horde", "unknown") and raw["faction"].strip():
             raise ValueError("Unexpected faction value")
         rows = []
         for token in raw["data"].split(";"):
@@ -68,6 +71,17 @@ def parse_scan_file(path: Path) -> list[dict]:
     return scans
 
 
+def missing_market_identity(raw):
+    """An unidentified scan cannot be attributed to the selected local market.
+
+    Preserve the raw header verbatim. An empty realm is emitted by inspected
+    AHledger releases when the client cannot supply it; neither the file's
+    other scans nor the configured profile establish this scan's realm.
+    """
+    return tuple(key for key in ('realm', 'faction')
+                 if not raw[key].strip() or raw[key].strip().casefold() == 'unknown')
+
+
 class LocalAHLedgerAdapter:
     economic_period = "unknown"
     capability = AdapterCapability(
@@ -81,6 +95,7 @@ class LocalAHLedgerAdapter:
         scans = parse_scan_file(path)
         now = datetime.now(timezone.utc).isoformat()
         count, imported, skipped = 0, 0, 0
+        unidentified = []
         with database.write_transaction() as connection:
             connection.execute("""INSERT INTO sources(source_key,name,source_type,url,trust_rank,notes,last_success_at)
                 VALUES (?, 'Local AHledger scans', 'local_addon', ?, 1, ?, ?)
@@ -96,6 +111,10 @@ class LocalAHLedgerAdapter:
                 digest = hashlib.sha256(body).hexdigest()
                 p = policy(connection)
                 if p and datetime.fromisoformat(captured) <= datetime.fromisoformat(p['reset_at']):
+                    continue
+                missing = missing_market_identity(raw)
+                if missing:
+                    unidentified.append((captured, missing))
                     continue
                 if not matches_profile(market_profile(connection), faction=raw['faction'],
                                        region=raw['region'], realm=raw['realm']):
@@ -121,9 +140,19 @@ class LocalAHLedgerAdapter:
             if imported:
                 connection.execute("""INSERT INTO imports(adapter_key,source_id,started_at,completed_at,status,file_name,record_count)
                     VALUES (?,?,?,?,'complete',?,?)""",(self.capability.key,source_id,now,now,str(path),count))
+            identity_warning = ''
+            if unidentified:
+                examples = '; '.join(f'{captured}: missing {", ".join(fields)}'
+                                     for captured, fields in unidentified[:5])
+                identity_warning = (f'Skipped {len(unidentified)} scan(s) with missing realm/faction identity '
+                                    f'({examples}). No market was inferred for them. '
+                                    'Original scans remain in the saved addon file. ')
             connection.execute('UPDATE sources SET notes=? WHERE id=?',
-                (f'Only saved auction scans; capture identity is source-reported. Latest file: {imported} new scan(s), {skipped} other-market scan(s) skipped. No transactions.', source_id))
+                (f'Only saved auction scans; capture identity is source-reported. Latest file: {imported} new scan(s), {skipped} other-market scan(s) skipped. '
+                 + identity_warning + 'No transactions.', source_id))
         notes = LIMITATIONS + ((f'Skipped {skipped} scan(s) from other market profiles; use a separate installation for them.',) if skipped else ())
+        if identity_warning:
+            notes += (identity_warning.strip(),)
         return ImportResult(self.capability.key,SOURCE_KEY,count,imported,notes)
 
 
@@ -138,29 +167,47 @@ class LocalAHLedgerWatcher:
     def __init__(self,database:Database,paths:tuple[str,...]=(),interval:int=3):
         self.database,self.paths,self.interval = database,paths,max(3,interval)
         self._signatures = {}
+        self._failures = {}
+        self._reported_errors = {}
         self._stop = threading.Event()
         self._thread = None
 
     def scan_once(self):
         results = []
         for path in discover_local_scans(self.paths):
+            signature = None
+            key = str(path)
             try:
                 stat = path.stat()
                 signature = (stat.st_mtime_ns,stat.st_size)
-                if self._signatures.get(str(path)) == signature:
+                if self._signatures.get(key) == signature:
+                    continue
+                failed = self._failures.get(key)
+                if failed and failed[0] == signature and time.monotonic() < failed[3]:
                     continue
                 adapter = LocalAHLedgerAdapter()
                 adapter.economic_period = getattr(self,"economic_period","unknown")
                 results.append(adapter.import_file(self.database,path))
-                self._signatures[str(path)] = signature
+                self._signatures[key] = signature
+                self._failures.pop(key, None)
+                self._reported_errors.pop(key, None)
             except Exception as exc:
                 import logging
-                logging.exception("Source path failed: %s", path)
+                failed = self._failures.get(key)
+                failure = (signature, type(exc), str(exc))
+                self._failures[key] = (*failure, time.monotonic() + max(60, self.interval))
+                # Retain the error in Source health, without parsing, logging
+                # and rewriting it on every 3-second poll of an unchanged file.
+                if not failed or failed[:3] != failure:
+                    logging.exception("Source path failed: %s; unchanged files retry after at least 60 seconds", path)
+                if self._reported_errors.get(key) == failure:
+                    continue
                 try:
                     with self.database.write_transaction() as connection:
                         connection.execute("""INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
                             VALUES (?,'Local AHledger scans','local_addon',1,?)
                             ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""", (SOURCE_KEY,str(exc)))
+                    self._reported_errors[key] = failure
                 except Exception:
                     logging.exception("Could not record source error")
         return results

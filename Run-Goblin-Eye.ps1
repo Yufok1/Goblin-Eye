@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $packageRoot = $PSScriptRoot
 Set-Location -LiteralPath $packageRoot
+. (Join-Path $packageRoot 'Set-Goblin-Eye-Storage.ps1')
 $env:PYTHONPATH = Join-Path $packageRoot 'src'
 $env:PYTHONUNBUFFERED = '1'
 # The ZIP bundles its own interpreter, so a player never installs Python. A source

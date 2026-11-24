@@ -20,6 +20,9 @@ class _WriteGate:
 _WRITE_GATES = WeakValueDictionary()
 _GATES_LOCK = threading.Lock()
 
+_WAL_VERIFIED: set[str] = set()
+_WAL_VERIFIED_LOCK = threading.Lock()
+
 
 def _write_gate(path: Path):
     key = os.path.normcase(str(path.resolve()))
@@ -47,16 +50,24 @@ class Database:
             if not self.read_only:
                 # journal_mode can fail immediately during concurrent first-open,
                 # even with SQLite's normal busy timeout configured.
-                deadline = time.monotonic() + 10
-                while True:
-                    try:
-                        if connection.execute('PRAGMA journal_mode').fetchone()[0] != 'wal':
-                            connection.execute("PRAGMA journal_mode = WAL")
-                        break
-                    except sqlite3.OperationalError as exc:
-                        if 'locked' not in str(exc).lower() or time.monotonic() >= deadline:
-                            raise
-                        time.sleep(.05)
+                # Once WAL is confirmed for a path we skip the check on later
+                # connections so concurrent threads never contend on this PRAGMA.
+                norm_path = os.path.normcase(str(self.path.resolve()))
+                with _WAL_VERIFIED_LOCK:
+                    already_verified = norm_path in _WAL_VERIFIED
+                if not already_verified:
+                    deadline = time.monotonic() + 10
+                    while True:
+                        try:
+                            if connection.execute('PRAGMA journal_mode').fetchone()[0] != 'wal':
+                                connection.execute("PRAGMA journal_mode = WAL")
+                            with _WAL_VERIFIED_LOCK:
+                                _WAL_VERIFIED.add(norm_path)
+                            break
+                        except sqlite3.OperationalError as exc:
+                            if 'locked' not in str(exc).lower() or time.monotonic() >= deadline:
+                                raise
+                            time.sleep(.05)
             return connection
         except BaseException:
             connection.close()

@@ -196,3 +196,10 @@ test('slotNumber wraps and SILENT_WAV is a valid RIFF header', () => {
   assert.equal(P.sessKey({ session: 's', chat: 'c' }), 'chat:c');
   assert.equal(P.sessKey({ session: 's', chat: '' }), 's:default');
 });
+
+test('sender metadata selects the matching saved character without asserting live stats', () => {
+ const prompt=P.systemPrompt('Chat sender (addon-reported identity):\nCharacter: Sender Example\nRealm: Example Realm');
+ assert.match(prompt,/Do not ask which character when the identity matches unambiguously/);
+ assert.match(prompt,/Sender metadata supplies no level, gear, quest or location evidence/);
+ assert.match(prompt,/unless the player explicitly asks about another character/);
+});

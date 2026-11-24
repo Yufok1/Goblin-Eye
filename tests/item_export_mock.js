@@ -13,9 +13,13 @@ ns.On=function(event,fn)
  events[event]=previous and function(...) previous(...); fn(...) end or fn
 end
 local complete=true
-ns.ScanGear=function(c) return not complete end
+ns.ScanGear=function(c) return not complete, true end
 local scanned=0
-ns.ScanContainers=function() scanned=scanned+1 end
+local retainedLinks={}
+ns.ScanContainers=function(_,_,_,links)
+ scanned=scanned+1
+ if links then assert(links==retainedLinks); links.kept=true end
+end
 ns.ItemScore=function() return 123 end
 local combat=false
 InCombatLockdown=function() return combat end
@@ -70,6 +74,20 @@ GetManaRegen=function() return 5,1 end
 UnitRace=function() return "Orc","Orc" end
 GetRealmName=function() return "Fixture Realm" end
 C_QuestLog={GetAllCompletedQuestIDs=function() return {843,846,849} end}
+local questRows={{isHeader=true,title="Zone"}, {isHeader=false,questID=1001,title="Partial quest",level=8},
+ {isHeader=false,questID=1002,title="Turn in",level=9}}
+C_QuestLog.GetNumQuestLogEntries=function() return #questRows,2 end
+C_QuestLog.GetInfo=function(index) return questRows[index] end
+C_QuestLog.ReadyForTurnIn=function(id) return id==1002 end
+C_QuestLog.GetQuestObjectives=function(id)
+ if id==1002 then return {} end
+ return {{text="Collect things: 2/5",type="item",numFulfilled=2,numRequired=5,finished=false}}
+end
+local mapX=0.42
+C_Map={GetBestMapForUnit=function() return 123 end,
+ GetPlayerMapPosition=function() return {GetXY=function() return mapX,0.63 end} end}
+GetZoneText=function() return "Fixture zone" end
+GetSubZoneText=function() return "Fixture landmark" end
 C_Traits={GetConfigsByType=function() return {100} end,
  GetConfigInfo=function() return {treeIDs={200}} end,
  GetTreeNodes=function() return {301,302} end,
@@ -144,6 +162,38 @@ assert(ns.char.goblinEyeCharacter.stats.intellect==45)
 assert(ns.char.goblinEyeCharacter.talents.nodes[1].spellID==600)
 assert(ns.char.goblinEyeCharacter.buffs.records[1].spellID==700)
 assert(ns.char.goblinEyeQuests.completed[849]==true)
+assert(select(2,ns.ScanGear(ns.char))==true,"preserve Alts 1.7 changed return flag")
+ns.ScanContainers({}, {}, {}, retainedLinks)
+assert(retainedLinks.kept,"preserve Alts 1.8 retained variant links argument")
+assert(ns.char.goblinEyeQuestLog.status=="recorded")
+assert(#ns.char.goblinEyeQuestLog.entries==2,"headers excluded")
+assert(ns.char.goblinEyeQuestLog.entries[1].objectives.records[1].numFulfilled==2)
+assert(ns.char.goblinEyeQuestLog.entries[1].readyForTurnIn==false)
+assert(ns.char.goblinEyeQuestLog.entries[2].readyForTurnIn==true)
+assert(ns.char.goblinEyeLocation.x==0.42)
+mapX=0.75; events.QUEST_LOG_UPDATE(); flush()
+assert(ns.char.goblinEyeLocation.x==0.42,"quest events must not track movement")
+events.PLAYER_LOGOUT()
+assert(ns.char.goblinEyeLocation.x==0.75,"save refreshes the starting point")
+local oldLog=ns.char.goblinEyeQuestLog
+combat=true; events.PLAYER_LOGOUT()
+assert(ns.char.goblinEyeQuestLog==oldLog,"lockdown retains earlier capture and timestamp")
+combat=false
+C_QuestLog.ReadyForTurnIn=function() return secretValue end
+C_QuestLog.GetQuestObjectives=function() return nil end
+events.QUEST_LOG_UPDATE(); flush()
+assert(ns.char.goblinEyeQuestLog.status=="partial")
+assert(ns.char.goblinEyeQuestLog.entries[1].readyForTurnIn==nil,"secret readiness is unknown")
+assert(ns.char.goblinEyeQuestLog.entries[1].objectives.status=="not_recorded")
+C_QuestLog.GetNumQuestLogEntries=function() return 0,0 end
+events.QUEST_REMOVED(); flush()
+assert(ns.char.goblinEyeQuestLog.status=="recorded" and #ns.char.goblinEyeQuestLog.entries==0,"removed quests replace the log")
+C_QuestLog.GetNumQuestLogEntries=nil
+events.QUEST_LOG_UPDATE(); flush()
+assert(ns.char.goblinEyeQuestLog.status=="not_recorded","unsupported API is not an empty log")
+C_Map.GetPlayerMapPosition=function() return nil end
+events.PLAYER_LOGOUT()
+assert(ns.char.goblinEyeLocation.x==nil and ns.char.goblinEyeLocation.status=="partial","unavailable coordinates stay unknown")
 local before=ns.char.goblinEyeCharacter
 combat=true; events.UNIT_STATS("player"); events.QUEST_LOG_UPDATE(); flush()
 assert(ns.char.goblinEyeCharacter==before,"never capture character-sheet telemetry in combat")

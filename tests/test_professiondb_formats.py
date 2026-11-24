@@ -4,8 +4,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
+from goblin_eye.ingestion.alts_forever import AltsForeverAdapter
 from goblin_eye.ingestion.lua_literals import read_library_table
 from goblin_eye.ingestion.professiondb import ProfessionDBAdapter, parse_professiondb
+from goblin_eye.item_graph import ItemGraph
 from goblin_eye.repository import Database
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +28,7 @@ class ProfessionDBFormatTests(unittest.TestCase):
     def addon(self, *, modern=True):
         files = ['Alchemy', 'RecipeItems', 'AcquireMethods']
         if modern:
-            files += ['HiddenRecipes', 'Sources', 'SourceNames']
+            files += ['HiddenRecipes', 'Sources', 'SourceNames', 'VendorSources']
         (self.root / 'ProfessionDB_Camelot.toc').write_text(
             '## Interface: 16001\n## Version: ProfessionDB-v1.9.0\n' +
             ''.join(f'Data/Forever/_core/{name}.lua\n' for name in files) +
@@ -71,6 +73,38 @@ class ProfessionDBFormatTests(unittest.TestCase):
         dataset = parse_professiondb(self.root)
         self.assertEqual(len(dataset.recipes), 2)
         self.assertTrue(all('borrowed_fields' not in r.attributes for r in dataset.recipes))
+
+    def test_core_item_ids_do_not_override_recipe_items(self):
+        self.addon()
+        core = self.core / 'Alchemy.lua'
+        core.write_text(core.read_text().replace('craftedItemId=201,', 'craftedItemId=201,itemId=401,')
+                        .replace('craftedItemId=202,', 'craftedItemId=202,itemId=402,'), encoding='utf-8')
+        (self.core / 'RecipeItems.lua').write_text(
+            'lib:LoadRecipeItems({[101]=501})\nlib:LoadSkillRankBooks({})', encoding='utf-8')
+
+        ProfessionDBAdapter().import_file(self.db, self.root)
+        with self.db.transaction() as c:
+            rows = c.execute('SELECT attributes_json FROM recipe_facts ORDER BY spell_id').fetchall()
+            teaching = c.execute('SELECT item_id,raw_reference FROM recipe_teaching_items').fetchall()
+        self.assertEqual([tuple(row) for row in teaching], [(501, 'Data/Forever/_core/RecipeItems.lua#101')])
+        discrepancies = [json.loads(row['attributes_json'])['teaching_item_discrepancy'] for row in rows]
+        self.assertEqual([row['core_item_id'] for row in discrepancies], [401, 402])
+        self.assertEqual([row['recipe_items_item_id'] for row in discrepancies], [501, None])
+
+    def test_learning_plan_recognizes_lowercase_recipe_with_zero_difficulty(self):
+        self.addon()
+        ProfessionDBAdapter().import_file(self.db, self.root)
+        save = Path(self.temp.name) / 'AltsForever.lua'
+        save.write_text('AltsForeverDB={v=2,chars={Fixture={name="Fixture",class="MAGE",level=5,'
+                        'recipes={Alchemy={["fixture potion"]=0,["Fixture elixir"]=true}}}}}', encoding='utf-8')
+        self.assertEqual(AltsForeverAdapter().import_file(self.db, save).snapshots, 1)
+        with self.db.transaction() as c:
+            snapshot = c.execute('SELECT id,payload_json FROM character_snapshots').fetchone()
+            fact_ids = [row['id'] for row in c.execute('SELECT id FROM recipe_facts')]
+        self.assertEqual(json.loads(snapshot['payload_json'])['character']['recipes']['Alchemy']['fixture potion'], 0)
+        for fact_id in fact_ids:
+            plan = ItemGraph(self.db).recipe(fact_id, snapshot['id'])['learning_plan']
+            self.assertEqual(plan['character']['learned_recipe_status'], 'recorded_known')
 
     def test_applied_enchants_and_recipe_enchants_are_queryable(self):
         self.addon()

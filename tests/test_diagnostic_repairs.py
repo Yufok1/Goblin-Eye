@@ -61,6 +61,53 @@ class DiagnosticRepairTests(unittest.TestCase):
         point=history.points(101,'forever.pvp.horde.us')['records'][0]
         self.assertEqual(point['import_economic_period'],'forever-live');self.assertTrue(point['observed_at'].startswith('2026-10-'))
 
+    def test_freshness_counts_priced_captures_once_and_excludes_empty_newer_captures(self):
+        from goblin_eye.history import record_capture
+        from goblin_eye.freshness import evidence_freshness
+        with self.db.write_transaction() as c:
+            source,market=self.market(c,'forever.pvp.horde.us','ahledger')
+            for identity,observed,points in (
+                ('priced','2026-11-15T10:00:00+00:00',[
+                    dict(item_key='101',observed_date='2026-11-15',minimum_copper=0),
+                    dict(item_key='102',observed_date='2026-11-16',median_copper=50)]),
+                ('empty','2026-11-18T10:00:00+00:00',[]),
+                ('unpriced','2026-11-18T11:00:00+00:00',[
+                    dict(item_key='103',observed_date='2026-11-18')])):
+                record_capture(c,source,market,identity,observed,observed,'source_table',points)
+        with self.db.transaction() as c:
+            traced=[];c.set_trace_callback(traced.append)
+            result=evidence_freshness(c,'wow-forever',24)
+            plan=[r['detail'] for r in c.execute('EXPLAIN QUERY PLAN '+traced[0])]
+        public=result['public_references'][0]
+        self.assertEqual(public['evidence_count'],1)
+        self.assertEqual(public['observed_at'],'2026-11-15T10:00:00+00:00')
+        self.assertEqual(public['observed_date'],'2026-11-16')
+        self.assertFalse(any(p['has_evidence'] for p in result['local_prices']))
+        self.assertTrue(any('idx_priced_capture_date' in detail for detail in plan),plan)
+        self.assertFalse(any('SCAN p' == detail for detail in plan),plan)
+
+    def test_item_search_keeps_unnamed_ids_literal_names_and_pagination(self):
+        from goblin_eye.item_graph import ItemGraph
+        with self.db.write_transaction() as c:
+            source,market=self.market(c,'wow-forever','local-auctionator')
+            # Price-only identity has no catalog/name assertion.
+            c.execute("""INSERT INTO price_observations(source_id,market_id,item_key,item_id,
+                scan_day,observed_date,imported_at,source_modified_at,confidence,evidence_kind)
+                VALUES (?,?,'99123',99123,1,'2026-11-18','2026-11-18','2026-11-18',1,'observed')""",(source,market))
+            dataset=c.execute("""INSERT INTO research_datasets(source_id,dataset_key,sha256,retrieved_at,
+                confidence,evidence_kind,manifest_json,limitations_json)
+                VALUES (?,'fixture','fixture','2026-11-18',1,'extracted','{}','[]')""",(source,)).lastrowid
+            c.executemany("""INSERT INTO world_entity_facts(dataset_id,entity_type,entity_id,name,attributes_json,raw_reference)
+                VALUES (?,'item',?,?,'{}','fixture')""",[(dataset,10,'Literal_100%'),(dataset,11,'Literal_100% two'),(dataset,12,'LiteralX1000')])
+        graph=ItemGraph(self.db)
+        self.assertEqual(graph.search_items('99123')['items'],[dict(item_id=99123,name=None)])
+        first=graph.search_items('Literal_100%',limit=1)
+        second=graph.search_items('Literal_100%',limit=1,offset=1)
+        self.assertEqual(first['total'],2);self.assertEqual(first['items'][0]['item_id'],10)
+        self.assertEqual(second['items'][0]['item_id'],11)
+        self.assertEqual(graph.search_items('99123'+'0'*20)['total'],0)
+        self.assertEqual(graph.search_items('')['total'],4)
+
     def test_quest_cutoff_explains_later_cache_without_exposing_its_ids(self):
         save=self.root/'AltsForever.lua'
         save.write_text('AltsForeverDB={v=2,chars={["Fixture Name"]={name="Fixture Name",class="WARLOCK",level=1,updated=1791374689}}}')

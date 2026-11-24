@@ -198,7 +198,9 @@ test('herb/ore nodes toggle and follow the gathering skill', () => {
   vm.run('SlashCmdList.WOWAIMAP("ore off"); SlashCmdList.WOWAIMAP("herb off")');
   assert.equal(shownPins(vm).length, 0);
   // Local map filters do not export profession research through chat.
-  assert.equal(vm.evaluate('WoWAI.GameContext()'), '');
+  const context=vm.evaluate('WoWAI.GameContext()');
+  assert.match(context,/^Chat sender \(addon-reported identity\):/);
+  assert.doesNotMatch(context,/Mining|Herbalism|Bergbau|Copper Vein|Tin Vein|Peacebloom/);
 });
 
 test('/wow-ai map hide, show, nav and stop', () => {

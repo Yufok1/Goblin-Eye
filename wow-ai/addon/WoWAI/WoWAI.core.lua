@@ -449,6 +449,24 @@ local function PollActivity(chat)
 	return moved
 end
 
+-- Reply records work even when WoW caches the sound probes as unplayable.
+-- Ignore repeated/older snapshots: rereading a slot is not new agent activity.
+local function ApplyActivity(chat, activity)
+	if type(activity) ~= "table" or type(activity.at_ms) ~= "number" or activity.at_ms ~= activity.at_ms then return end
+	run.act = run.act or {}
+	local a = run.act[chat.id] or { next=1, count=0, startedAt=GetTime() }
+	if a.snapshotAt and activity.at_ms <= a.snapshotAt then return end
+	local function nonnegative(value)
+		return type(value) == "number" and value == value and value >= 0 and value < 1e15 and value or 0
+	end
+	local now = GetTime()
+	a.snapshotAt = activity.at_ms
+	a.bridgeEvents = math.floor(nonnegative(activity.events))
+	a.startedAt = now - nonnegative(activity.elapsed_ms) / 1000
+	if a.bridgeEvents > 0 then a.bridgeLast = now - nonnegative(activity.last_event_ago_ms) / 1000 else a.bridgeLast = nil end
+	run.act[chat.id] = a
+end
+
 -- Bridge presence. Evidence the bridge is alive comes from several places:
 -- presence beats, acks, slot data (which carries the bridge's clock), replies.
 local function NotedBridge(at)
@@ -636,14 +654,24 @@ local function ActivityLine(chat)
 	local now = GetTime()
 	local started = (a and a.startedAt) or run.sentAt or now
 	local s = "running " .. FmtDur(now - started)
-	if a and not a.unreliable then
-		s = s .. " - " .. a.count .. (a.count == 1 and " activity beat" or " activity beats")
-		if a.last then
-			local quiet = now - a.last
+	if a then
+		local last
+		if a.bridgeEvents ~= nil then
+			s = s .. " - " .. a.bridgeEvents .. (a.bridgeEvents == 1 and " activity update" or " activity updates")
+			last = a.bridgeLast
+		elseif a.progressAt then
+			s = s .. " - progress received"
+			last = a.progressAt
+		elseif not a.unreliable and a.count > 0 then
+			s = s .. " - " .. a.count .. (a.count == 1 and " liveness beat" or " liveness beats")
+			last = a.last
+		end
+		if last then
+			local quiet = now - last
 			s = s .. ", last " .. FmtDur(quiet) .. " ago"
-			if quiet > 120 then s = s .. " (quiet for a while - stuck? /wow-ai cancel)" end
+			if quiet > 120 then s = s .. " (waiting for another update)" end
 		elseif now - started > 60 then
-			s = s .. ", no activity seen yet"
+			s = s .. ", waiting for an agent update"
 		end
 	end
 	return s
@@ -695,6 +723,7 @@ local function ApplyReplies(replies)
 		if c and c.pendingId and r.id == c.pendingId then
 			matched = true
 			MarkAcked(r.id)
+			ApplyActivity(c, r.activity)
 			local denied = type(r.denied) == "table" and #r.denied > 0 and r.denied or nil
 			if r.status == "done" then
 				Finish(c, "assistant", r.text or "", denied, r.agent, r.summary, WoWAI.CleanMacros(r.macros), r.research or c.liveResearch, r.resources, r.speech_key)
@@ -704,6 +733,8 @@ local function ApplyReplies(replies)
 				c.resetNext = true
 				Finish(c, "system", r.text or "Stopped. Send a new message to continue.", nil, r.agent, nil, nil, r.research or c.liveResearch)
 			elseif r.status == "working" then
+				local a = run.act and run.act[c.id]
+				if a and r.text ~= c.progress and type(r.text) == "string" and r.text ~= "" then a.progressAt = GetTime() end
 				c.progress = r.text
 				if type(r.research) == "table" then c.liveResearch = r.research end
 			end
@@ -1042,19 +1073,14 @@ function WoWAI.SkillLines()
 end
 
 function WoWAI.GameContext()
-	-- Conversation transport only. Research reads saved addon files through MCP.
-	-- Keep the empty value so hello clears context cached by older bridges.
-	return ""
-end
-
--- The context to put on the next record, or nil when the bridge already has
--- it (or it wouldn't fit next to this message; it goes with a later one).
--- "" when the setting is off, so the bridge drops what it had.
-local function ContextToSend(room)
-	local ctx = db.settings.context and WoWAI.GameContext() or ""
-	if ctx == (run.contextSent or "") then return nil end
-	if room and #ctx > room then return nil end
-	return ctx
+	-- Chat sender metadata only; no equipment, stats, location or quest reads.
+	local function clean(value)
+		return type(value) == "string" and value:gsub("[%c]", " "):sub(1, 160) or ""
+	end
+	local name = clean(UnitName and UnitName("player"))
+	local realm = clean(GetRealmName and GetRealmName())
+	if name == "" then return "" end
+	return "Chat sender (addon-reported identity):\nCharacter: " .. name .. "\nRealm: " .. (realm ~= "" and realm or "unknown")
 end
 
 -- Read a link's tooltip off a hidden GameTooltip, one line per row.
@@ -1158,14 +1184,14 @@ function WoWAI.Send(text, allow)
 	-- Shift-clicked links become [Name] plus their tooltip, which is what the agent can read.
 	local links
 	text, links = WoWAI.ExpandLinks(text)
-	local limit = Codec.MAX_PAYLOAD - 300 - #ToHex(ChatOptions(c))
+	local ctx = WoWAI.GameContext()
+	local limit = Codec.MAX_PAYLOAD - 300 - #ToHex(ChatOptions(c)) - #ctx
 	if #text > limit then
 		AddHistory(c, "system", "That message is too long for one send (" .. #text .. " chars, max ~" .. limit .. "). Split it up." .. (links > 0 and " Each linked item adds its tooltip to the message." or ""))
 		WoWAI.Render()
 		return
 	end
-	-- The game context rides along when the bridge doesn't have this version yet.
-	local ctx = ContextToSend(limit - #text)
+	-- Every message carries its own sender, including after an alt switch.
 
 	db.lastSeq = db.lastSeq + 1
 	local id = db.lastSeq
@@ -1175,6 +1201,7 @@ function WoWAI.Send(text, allow)
 	local options = ChatOptions(c)
 	if options ~= "" then table.insert(tokens, "opts=" .. ToHex(options)) end
 	c.pendingOptions, c.pendingAgent = options, c.agent or ""
+	c.pendingContext = ctx
 	local allowHex
 	if type(allow) == "table" and #allow > 0 then
 		table.insert(tokens, "allow=" .. table.concat(allow, ","))
@@ -1363,7 +1390,7 @@ function WoWAI.SayHello()
 	run.lastHelloAt = now
 	db.lastSeq = db.lastSeq + 1
 	local c = ActiveChat()
-	local ctx = db.settings.context and WoWAI.GameContext() or ""
+	local ctx = WoWAI.GameContext()
 	run.outbound[db.lastSeq] = { chat = c and c.id or "", cwd = c and c.cwd or "", flags = "h", name = c and c.name or "", text = "", ctx = ctx, sentAt = now, hello = true }
 	run.helloPollAt = now + 5
 	-- Deletions the bridge never confirmed ride along with the hello.
@@ -1401,7 +1428,7 @@ function WoWAI.Resend()
 	local options = c.pendingOptions or ChatOptions(c)
 	local flags = agent ~= "" and "agent=" .. agent or ""
 	if options ~= "" then flags = flags .. (flags ~= "" and ";" or "") .. "opts=" .. ToHex(options) end
-	run.outbound[c.pendingId] = { chat = c.id, cwd = c.cwd, flags = flags, name = c.name, text = text, sentAt = GetTime() }
+	run.outbound[c.pendingId] = { chat = c.id, cwd = c.cwd, flags = flags, name = c.name, text = text, ctx = c.pendingContext or "", sentAt = GetTime() }
 	run.sentAt = GetTime()
 	run.polls = 0
 	ScheduleNextPoll()
@@ -3157,7 +3184,7 @@ SlashCmdList["WOWAI"] = function(msg)
 		run.contextSent = nil
 		run.lastHelloAt = nil
 		if WoWAI.IsConnected() then WoWAI.SayHello() end
-		AddHistory(c, "system", "Research context comes from saved addon files through Goblin Eye MCP. WoWAI carries your conversation; automatic game context is disabled.")
+		AddHistory(c, "system", "Research context comes from saved addon files through Goblin Eye MCP. Chat sender name and realm are attached automatically. Gear, stats and quests still come from saved addon files.")
 		WoWAI.Render()
 		WoWAI.Toggle(true)
 	elseif cmd == "mode" then

@@ -73,4 +73,18 @@ class QuestImportTests(unittest.TestCase):
         with self.assertRaises(ValueError): adapter.import_file(self.db,self.root)
         self.assertEqual(ResearchQueries(self.db).world(entity_type='quest',query='Changed title')['total'],1)
 
+    def test_indexed_ids_with_missing_metadata_remain_explicit(self):
+        self.rows['Npc-IDS']=[123]
+        del self.rows['Quest-20-S'][1]
+        self.write()
+        QuestieDbAdapter().import_file(self.db,self.root)
+        q=ResearchQueries(self.db)
+        npc=q.world(entity_type='npc',query='123')['records'][0]
+        self.assertIsNone(npc['name'])
+        self.assertEqual(npc['attributes']['metadata_status'],'missing_scalar_row')
+        quest=q.world(entity_type='quest',query='20')['records'][0]
+        self.assertIsNone(quest['name'])
+        self.assertEqual(quest['attributes']['required_level'],18)
+        self.assertEqual(quest['attributes']['metadata_status'],'missing_name')
+
 if __name__=='__main__': unittest.main()

@@ -1,4 +1,4 @@
-"""Import complete baked QuestieDB Forever NPC/object spawn metadata."""
+"""Import available baked QuestieDB Forever world metadata with explicit gaps."""
 from __future__ import annotations
 
 import base64
@@ -32,6 +32,7 @@ LIMITATIONS = (
     "The baked artifact includes static corrections; client-time faction-specific dynamic corrections are not applied by this offline import.",
     "Quest requirements and objectives are static assertions, not the active quest log or proof of current eligibility. Positive zoneOrSort values are area IDs; negative values are quest categories.",
     "UI map associations come from the installed Forever area mapping; original area IDs and area-relative coordinates are preserved. No coordinate conversion is performed.",
+    "Indexed NPC/object IDs without scalar metadata remain ID-only assertions with metadata_status=missing_scalar_row. Quests missing names retain missing_name status; counts do not establish complete metadata coverage.",
 )
 
 
@@ -139,7 +140,8 @@ def parse_questiedb(root: Path) -> dict:
               "Object": {"count": 7, "spawns": 4, "waypoints": 7}}
     records = []
     counts = {"npc": 0, "object": 0, "npc_with_spawns": 0, "object_with_spawns": 0,
-              "npc_with_waypoints": 0, "object_with_waypoints": 0, "spawn_points": 0, "waypoint_points": 0}
+              "npc_with_waypoints": 0, "object_with_waypoints": 0, "spawn_points": 0, "waypoint_points": 0,
+              "npc_missing_scalar_rows": 0, "object_missing_scalar_rows": 0}
     for entity, info in schema.items():
         ids = _decode(metadata, f"X-{entity}-IDS", compressed=True)
         if not isinstance(ids, list) or len(ids) != len(set(ids)):
@@ -147,6 +149,15 @@ def parse_questiedb(root: Path) -> dict:
         for entity_id in ids:
             positive_id(entity_id, f"{entity} ID")
             row = _decode(metadata, f"X-{entity}-{entity_id}-S")
+            if row is None:
+                # The installed baked reader returns nil for indexed IDs with no
+                # scalar header. Preserve identity without manufacturing defaults.
+                kind=entity.lower()
+                counts[kind] += 1
+                counts[kind+'_missing_scalar_rows'] += 1
+                records.append((kind,entity_id,None,json.dumps({'metadata_status':'missing_scalar_row'}),
+                                f'QuestieDB_Forever.toc#X-{entity}-IDS'))
+                continue
             if isinstance(row, list):
                 row = {index: value for index, value in enumerate(row, 1) if value is not None}
             if not isinstance(row, dict):
@@ -187,6 +198,7 @@ def parse_questiedb(root: Path) -> dict:
     if not isinstance(quest_ids, list) or len(quest_ids)!=len(set(quest_ids)):
         raise ValueError('Invalid QuestieDB quest ID index')
     counts['quest'] = 0
+    counts['quest_missing_names'] = 0
     for quest_id in quest_ids:
         positive_id(quest_id, 'Quest ID')
         row = _decode(metadata, f'X-Quest-{quest_id}-S')
@@ -199,7 +211,7 @@ def parse_questiedb(root: Path) -> dict:
                 value = _decode(metadata, f'X-Quest-{quest_id}-{index}')
                 if value is None: raise ValueError(f'Missing QuestieDB quest field: {quest_id}/{index}')
             if value is not None: fields[name] = _json_value(value)
-        if not isinstance(fields.get('name'), str): raise ValueError('Quest name missing')
+        if fields.get('name') is not None and not isinstance(fields['name'], str): raise ValueError('Invalid quest name')
         attributes = {'quest_fields': fields, 'level': fields.get('questLevel'),
                       'required_level': fields.get('requiredLevel'), 'zone_or_sort': fields.get('zoneOrSort')}
         area = fields.get('zoneOrSort')
@@ -207,10 +219,13 @@ def parse_questiedb(root: Path) -> dict:
             attributes['area_id'] = area
             if area_maps.get(area, 0)>0: attributes['ui_map_id'] = area_maps[area]
         attributes['map_mapping_reference'] = AREA_MAP_FILE
-        records.append(('quest', quest_id, fields['name'], json.dumps(attributes, ensure_ascii=False), f'QuestieDB_Forever.toc#X-Quest-{quest_id}'))
+        if not fields.get('name'):
+            counts['quest_missing_names'] += 1
+            attributes['metadata_status']='missing_name'
+        records.append(('quest', quest_id, fields.get('name'), json.dumps(attributes, ensure_ascii=False), f'QuestieDB_Forever.toc#X-Quest-{quest_id}'))
         counts['quest'] += 1
     return {"root": root, "body": body, "map_body": map_body, "version": metadata.get("Version"), "build_commit": metadata.get("X-BUILD-COMMIT"),
-            "build_time": metadata.get("X-BUILD-TIME"), "sha256": hashlib.sha256(b'questiedb-quest-schema-v2\0'+body+map_body).hexdigest(),
+            "build_time": metadata.get("X-BUILD-TIME"), "sha256": hashlib.sha256(b'questiedb-quest-schema-v3\0'+body+map_body).hexdigest(),
             "records": tuple(records), "counts": counts}
 
 
@@ -243,7 +258,7 @@ class QuestieDbAdapter:
                 "sha256": hashlib.sha256(data["body"]).hexdigest(), "bytes": len(data["body"]), "counts": data["counts"],
                 "build_commit": data["build_commit"], "build_time": data["build_time"]},
                 AREA_MAP_FILE: {"sha256": hashlib.sha256(data['map_body']).hexdigest(), "bytes": len(data['map_body'])},
-                "parser_revision": 2}
+                "parser_revision": 3}
             cursor = connection.execute("""INSERT INTO research_datasets(source_id,dataset_key,sha256,source_version,game_build,
                 content_phase,retrieved_at,confidence,evidence_kind,manifest_json,limitations_json)
                 VALUES (?,'world-spawns',?,?,?,'Forever',?,0.65,'extracted',?,?)""",

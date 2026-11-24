@@ -14,7 +14,8 @@ Forever interface and scanner contracts first. Original files are backed up
 under `data/addon-backups`. Setup errors appear in source health. No additional
 addon, external catalog, or model download is required.
 
-Reviewed Alts releases are 0.10.0, 0.13.0, 0.16.0 and live 1.0.1. Setup also checks the
+Reviewed Alts releases are 0.10.0, 0.13.0, 0.16.0, 1.0.1, 1.7.0, 1.8.0 and 1.9.1. The 1.8.0/1.9.1
+container wrapper preserves the retained variant-links argument. Setup also checks the
 saved schema, scanner signatures and both manifests before writing files;
 an unknown release or a partial update is rejected until reviewed.
 
@@ -66,6 +67,15 @@ between this exact-character observation and the existing Questie cache by
 freshness, exposing the timestamp basis. It never treats an absent quest as
 proof of eligibility. Neither the client nor these tools supplies a universal
 current quest-eligibility catalog.
+
+The extension also captures accepted quests, public objective text/counters,
+completion/failure flags and explicit turn-in readiness on quest changes and
+normal saves. `get_character_active_quests` pages that snapshot independently of
+completed history. Missing APIs, secret fields and partial log coverage remain
+unknown. It never selects quests or expands collapsed headers. The saved location
+is captured only on entering the world and logout/reload, with its own time,
+zone/subzone, UI map ID and normalized coordinates when available. There is no
+movement polling. Lockdown preserves the previous observation and its old time.
 
 Goblin Eye's Python/MCP backend reads these saved addon files and its database.
 It does not access the game process, screenshot gameplay, issue game inputs,

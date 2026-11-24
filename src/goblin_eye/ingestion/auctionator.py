@@ -180,16 +180,28 @@ def parse_auctionator_file(path: Path, data: bytes | None = None) -> Auctionator
 def select_auctionator_markets(markets, profile):
     """Match inspected legacy, normalized-realm and regional ruleset keys.
 
-    Modern keys supply no faction or region. Never derive a ruleset from a
-    realm label, and never join different saved buckets into one price series.
+    Modern bare keys supply no faction or region. Forever's faction-suffixed
+    regional keys report faction, but still require an explicitly selected
+    ruleset. Never derive ruleset from a realm or pool different saved buckets.
     """
-    selected, regional, skipped = {}, {}, []
+    selected, regional, faction_regional, skipped = {}, {}, {}, []
     known_realm = profile['realm'] != 'unknown'
     normalized = lambda value: ''.join(value.split()).casefold()
     rulesets = {'PvP': 'pvp', 'PvE': 'normal', 'RP': 'rp', 'HC': 'hardcore'}
     for key in markets:
+        bucket = re.fullmatch(r'(PvP|PvE|RP|HC) (Horde|Alliance|Neutral)', key)
         legacy = re.fullmatch(r'(.+) (Horde|Alliance|Neutral)', key)
-        if legacy and matches_profile(profile, realm=legacy.group(1), faction=legacy.group(2)):
+        if bucket:
+            # Inspected Auctionator 351 adds GetFaction() to its regional root.
+            # "PvP" here is a storage bucket, never an observed realm name.
+            if (profile['ruleset'] == rulesets[bucket.group(1)]
+                    and (known_realm or profile['faction'] != 'unknown')
+                    and matches_profile(profile, faction=bucket.group(2))):
+                faction_regional[key] = ('unknown', bucket.group(2),
+                    'Regional ruleset/faction key matched to explicitly selected ruleset and profile; source realm and region are unknown')
+            else:
+                skipped.append(key)
+        elif legacy and matches_profile(profile, realm=legacy.group(1), faction=legacy.group(2)):
             selected[key] = (legacy.group(1), legacy.group(2), 'Legacy realm/faction key')
         elif key in rulesets:
             if profile['ruleset'] == rulesets[key] and (known_realm or profile['faction'] != 'unknown'):
@@ -202,7 +214,11 @@ def select_auctionator_markets(markets, profile):
             skipped.append(key)
     # Auctionator switches to a regional bucket when regional unique names
     # are enabled. An explicitly matching bucket supersedes old realm storage.
-    if regional:
+    if faction_regional:
+        skipped.extend(selected)
+        skipped.extend(regional)
+        selected = faction_regional
+    elif regional:
         skipped.extend(selected)
         selected = regional
     if len(selected) > 1:
@@ -227,7 +243,7 @@ class AuctionatorSavedVariablesAdapter:
         supplies=("observed minimum unit prices", "daily low range", "observed available quantity"),
         needs=("separate raw-listing source for individual auctions and stack sizes",),
         documentation_url="https://www.curseforge.com/wow/addons/auctionator",
-        notes="Reviewed Auctionator saved schema 8 and market schema 2, serialized and literal tables. Installed addon releases and populated-scan validation are distinct from schema compatibility. Modern realm/ruleset keys do not identify faction or region. The addon stores aggregated prices, not raw listings.",
+        notes="Reviewed Auctionator saved schema 8 and market schema 2, serialized and literal tables, including 351 regional ruleset/faction keys. Installed addon releases and populated-scan validation are distinct from schema compatibility. Bare modern realm/ruleset keys do not identify faction or region; faction-suffixed regional keys still do not identify realm or region. The addon stores aggregated prices, not raw listings.",
     )
 
     def import_file(self, database: Database, path: Path) -> ImportResult:

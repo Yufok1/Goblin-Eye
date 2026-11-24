@@ -59,6 +59,7 @@ jobs:
         run: |
           py -3 scripts/build_release.py
           py -3 scripts/verify_release.py
+          py -3 scripts/build_curseforge.py
 
       - name: Create a draft release for review
         shell: pwsh
@@ -70,6 +71,9 @@ jobs:
             "dist/Goblin-Eye-*-Windows.zip" `
             "dist/Goblin-Eye-*-Windows.zip.sha256" `
             "dist/Goblin-Eye-*-Windows.validation.json" `
+            "dist/Goblin-Eye-*-CurseForge.zip" `
+            "dist/Goblin-Eye-*-CurseForge.zip.sha256" `
+            "dist/Goblin-Eye-*-CurseForge.validation.json" `
             --draft `
             --title "Goblin Eye $env:TAG" `
-            --notes "Automated draft. The archive passed fresh-install, empty-database, read-only MCP, companion MCP, spaced-path and Windows launcher verification. Review the assets before publishing."
+            --notes "Automated draft. The Windows archive passed fresh-install, empty-database, read-only MCP, companion MCP, spaced-path and Windows launcher verification. The separate CurseForge addon ZIP passed packaging checks and requires the matching Windows companion. Review both assets before publishing; no CurseForge submission is performed."

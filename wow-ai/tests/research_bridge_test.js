@@ -3,7 +3,8 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const {spawnSync,execFileSync}=require('child_process');
 test('AGY denied research is delivered as an error even when its CLI exits successfully',()=>{
  const root=fs.mkdtempSync(path.join(require('os').tmpdir(),'wowai-agy-denied-')),bridge=path.join(__dirname,'../bridge');
- for(const name of ['bridge.js','models.js','protocol.js','agents.js','research.js','evidence.js','publisher.js','activity.js','instance-lock.js','kilo-policy.js','speech.js','speak.ps1','install-slots.js'])fs.copyFileSync(path.join(bridge,name),path.join(root,name));
+ for(const name of ['bridge.js','models.js','protocol.js','continuity.js','agents.js','runtime-storage.js','storage-permissions.py','hidden-child-process.js','hidden-console.py','background-process.js','companion-client.js','companion-worker.js','research.js','evidence.js','publisher.js','activity.js','instance-lock.js','kilo-policy.js','speech.js','speak.ps1','install-slots.js'])fs.copyFileSync(path.join(bridge,name),path.join(root,name));
+ fs.copyFileSync(path.join(bridge,'../../runtime-storage.json'),path.join(root,'runtime-storage.json'));
  const fake=path.join(root,'fake-agy.js');
  fs.writeFileSync(fake,`const fs=require('fs');fs.writeFileSync(process.argv[process.argv.indexOf('--log-file')+1],'Print mode: soft-denying tool confirmation "CallMcpTool" at step 2');process.stdout.write(JSON.stringify({event:'result',result:{status:'SUCCESS',response:'I will check the evidence.'}}));`);
  const cfg={agent:'agy',agents:{agy:{path:fake,permissionMode:'default'}},defaultCwd:root,addonDir:path.join(root,'addons'),inboxFile:path.join(root,'addons/WoWAI/Inbox.lua'),savedVariablesFile:path.join(root,'save.lua'),capture:{enabled:false},slots:2,actMax:2,presenceMax:2,primerFile:''};
@@ -18,7 +19,8 @@ test('bridge preserves a long answer and full tool result through a real subproc
  fs.mkdirSync(path.join(__dirname,'tmp'),{recursive:true});
  const root=fs.mkdtempSync(path.join(__dirname,'tmp','research-'));
  const bridge=path.join(__dirname,'..','bridge');
- for(const name of ['bridge.js','models.js','protocol.js','agents.js','research.js','evidence.js','publisher.js','activity.js','instance-lock.js','kilo-policy.js','speech.js','speak.ps1','install-slots.js'])fs.copyFileSync(path.join(bridge,name),path.join(root,name));
+ for(const name of ['bridge.js','models.js','protocol.js','continuity.js','agents.js','runtime-storage.js','storage-permissions.py','hidden-child-process.js','hidden-console.py','background-process.js','companion-client.js','companion-worker.js','research.js','evidence.js','publisher.js','activity.js','instance-lock.js','kilo-policy.js','speech.js','speak.ps1','install-slots.js'])fs.copyFileSync(path.join(bridge,name),path.join(root,name));
+ fs.copyFileSync(path.join(bridge,'../../runtime-storage.json'),path.join(root,'runtime-storage.json'));
  const cfg=JSON.parse(fs.readFileSync(path.join(bridge,'config.example.json'),'utf8'));
  cfg.addonDir=path.join(root,'addons');cfg.inboxFile=path.join(cfg.addonDir,'WoWAI','Inbox.lua');cfg.savedVariablesFile=path.join(root,'save.lua');cfg.defaultCwd=root;
  cfg.agent='codex';cfg.capture.enabled=false;cfg.slots=3;cfg.actMax=3;cfg.presenceMax=3;cfg.primerFile='';

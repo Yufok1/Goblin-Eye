@@ -1,17 +1,26 @@
 #!/usr/bin/env node
 'use strict';
+require('./runtime-storage').activate();
 // Keeps bridge.js running: restarts it 3 s after any exit. Ctrl+C stops both.
 // This is also the `wow-ai` command (package.json "bin"): arguments and the
 // current folder pass straight through to bridge.js, so `cd proj && wow-ai`
 // makes proj the default folder for chats.
 const { spawn } = require('child_process');
+const { killTree } = require('./agents');
 const path = require('path');
 
 let child = null;
 let stopping = false;
 
 function start() {
-  child = spawn(process.execPath, [path.join(__dirname, 'bridge.js'), ...process.argv.slice(2)], { stdio: 'inherit' });
+  // The chat-strip transport needs its normal desktop. Agents and the separate
+  // discovery/speech worker use background-process to isolate their helpers.
+  child = spawn(process.execPath, [path.join(__dirname, 'bridge.js'), ...process.argv.slice(2)], { windowsHide: true, stdio: 'inherit' });
+  child.on('error', error => {
+    console.error('Could not start the background bridge:', error.message);
+    stopping = true;
+    process.exitCode = 1;
+  });
   child.on('exit', (code) => {
     child = null;
     if (stopping) return;
@@ -23,8 +32,10 @@ function start() {
 
 function stop() {
   stopping = true;
-  if (child) child.kill();
-  process.exit(0);
+  if (child) {
+    child.once('close', () => process.exit(0));
+    killTree(child);
+  } else process.exit(0);
 }
 
 process.on('SIGINT', stop);

@@ -14,7 +14,7 @@ QUALITIES = ('POOR', 'COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY', 'ARTIFAC
 PROVENANCE = """d.source_version,d.retrieved_at,d.game_build,d.content_phase,d.confidence,
     d.evidence_kind,d.sha256 dataset_sha256,d.limitations_json,
     s.source_key,s.name source_name,s.url source_url,s.trust_rank"""
-WORLD_JOIN = """ FROM world_entity_facts w JOIN research_datasets d ON d.id=w.dataset_id
+WORLD_JOIN = """ FROM research_datasets d CROSS JOIN world_entity_facts w ON d.id=w.dataset_id
     JOIN sources s ON s.id=d.source_id """
 
 
@@ -161,7 +161,7 @@ class ResearchQueries:
         if item_quality is not None:
             if item_quality not in QUALITIES: raise ValueError(f'item_quality must be one of {QUALITIES}')
             where.append(f"json_extract({quality},'$.quality')=?"); args.append(item_quality)
-        base = ''' FROM acquisition_facts a JOIN research_datasets d ON d.id=a.dataset_id
+        base = ''' FROM research_datasets d CROSS JOIN acquisition_facts a ON d.id=a.dataset_id
             JOIN sources s ON s.id=d.source_id LEFT JOIN world_entity_facts w
             ON w.dataset_id=a.dataset_id AND w.entity_type=a.entity_type AND w.entity_id=a.entity_id
             WHERE ''' + ' AND '.join(where)

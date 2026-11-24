@@ -4,7 +4,7 @@ const M=require('../bridge/models'),P=require('../bridge/protocol'),A=require('.
 const r=id=>M.row({id,name:'Name '+id,variants:['low','high'],efforts:['low','high']});
 test('background retries a timed-out Kilo promptly without refreshing healthy providers',async()=>{
  let now=0;const calls={};
- const c=new M.ModelCatalog({config:{},defaultAgent:'kilo',now:()=>now,loader:async id=>{calls[id]=(calls[id]||0)+1;if(id==='kilo'&&calls[id]===1)throw Error('Model discovery timed out.');return [r(id+'/model')];}});
+ const c=new M.ModelCatalog({config:{backgroundModelDiscovery:true},defaultAgent:'kilo',now:()=>now,loader:async id=>{calls[id]=(calls[id]||0)+1;if(id==='kilo'&&calls[id]===1)throw Error('Model discovery timed out.');return [r(id+'/model')];}});
  await c.refreshBackground();assert.equal(c.wire().find(v=>v.agent==='kilo').status,'error');
  now=29999;await c.refreshBackground();assert.equal(calls.kilo,1);
  now=30000;await c.refreshBackground();assert.equal(calls.kilo,2);assert.equal(calls.codex,1);
@@ -13,7 +13,7 @@ test('background retries a timed-out Kilo promptly without refreshing healthy pr
 test('background catalogs deliver every model, share caches, and retain data on refresh failure',async()=>{
  let now=0,fail=false,calls=0;
  const items=Array.from({length:27},(_,i)=>r('model'+i));
- const c=new M.ModelCatalog({config:{},defaultAgent:'kilo',now:()=>now,loader:async()=>{calls++;if(fail)throw Error('offline');return items;}});
+ const c=new M.ModelCatalog({config:{backgroundModelDiscovery:true},defaultAgent:'kilo',now:()=>now,loader:async()=>{calls++;if(fail)throw Error('offline');return items;}});
  await c.refreshBackground();
  const firstCalls=calls;
  const view=c.wire().find(v=>v.agent==='kilo');
@@ -23,6 +23,22 @@ test('background catalogs deliver every model, share caches, and retain data on 
  now=300001;fail=true;await c.refreshBackground();
  const stale=c.wire().find(v=>v.agent==='kilo');assert.equal(stale.status,'ready');assert.equal(stale.items.length,27);assert.equal(stale.error,'offline');assert.equal(stale.fetched_at,0);
 });
+test('Windows catalog probing requires opt-in and disabled refresh never starts a CLI',async()=>{
+ assert.equal(M.backgroundDiscoveryEnabled({},'win32'),false);
+ assert.equal(M.backgroundDiscoveryEnabled({backgroundModelDiscovery:true},'win32'),true);
+ assert.equal(M.backgroundDiscoveryEnabled({},'linux'),true);
+ assert.equal(M.backgroundDiscoveryEnabled({backgroundModelDiscovery:false},'linux'),false);
+ let now=0,calls=0;
+ const c=new M.ModelCatalog({config:{backgroundModelDiscovery:false},defaultAgent:'kilo',now:()=>now,loader:async()=>{calls++;return [r('saved-model')];}});
+ await c.refreshBackground();now=600001;await c.refreshBackground();
+ assert.equal(calls,0,'startup and idle timer refreshes must not invoke any CLI');
+ await c.request({chat:'explicit',id:1,text:'{}'});
+ assert.equal(calls,1,'explicit model requests remain available');
+ now+=600001;await c.refreshBackground();
+ assert.equal(calls,1,'an expired catalog cannot restart idle CLI probes');
+ assert.equal(c.wire()[0].items[0].id,'saved-model');
+});
+
 test('Kilo verbose catalog parses real pretty metadata and drops non-tool models',()=>{
  const text='kilo/orc\n'+JSON.stringify({name:'Orc',capabilities:{toolcall:true},isFree:true,cost:{input:0,output:0},variants:{low:{},high:{}}},null,2)+'\nkilo/no-tools\n'+JSON.stringify({capabilities:{toolcall:false}},null,2);
  const rows=M.parseModels('kilo',text);assert.equal(rows.length,1);assert.equal(rows[0].id,'kilo/orc');assert.deepEqual(rows[0].variants,['low','high']);assert.equal(rows[0].free,true);assert.equal(rows[0].priced,true);
@@ -68,7 +84,8 @@ test('both transports preserve per-chat settings and catalog requests',()=>{
 });
 test('real bridge catalog control does not launch an agent or write a transcript',()=>{
  const {spawnSync,execFileSync}=require('child_process'),root=fs.mkdtempSync(path.join(os.tmpdir(),'goblin-model-bridge-')),bridge=path.join(__dirname,'../bridge');
- for(const f of ['bridge.js','models.js','protocol.js','agents.js','research.js','evidence.js','publisher.js','activity.js','instance-lock.js','kilo-policy.js','speech.js','speak.ps1','install-slots.js'])fs.copyFileSync(path.join(bridge,f),path.join(root,f));
+ for(const f of ['bridge.js','models.js','protocol.js','continuity.js','agents.js','runtime-storage.js','storage-permissions.py','hidden-child-process.js','hidden-console.py','background-process.js','companion-client.js','companion-worker.js','research.js','evidence.js','publisher.js','activity.js','instance-lock.js','kilo-policy.js','speech.js','speak.ps1','install-slots.js'])fs.copyFileSync(path.join(bridge,f),path.join(root,f));
+ fs.copyFileSync(path.join(bridge,'../../runtime-storage.json'),path.join(root,'runtime-storage.json'));
  const fake=path.join(root,'fake-model-cli.js');fs.writeFileSync(fake,`if(process.argv.includes('models')){ console.log('new-model\\tNew model'); }else{require('fs').writeFileSync(${JSON.stringify(path.join(root,'AGENT-RAN'))},'bad');}`);
  const cfg={agent:'agy',agents:{agy:{path:fake,model:'old'}},defaultCwd:root,addonDir:path.join(root,'addons'),inboxFile:path.join(root,'addons/WoWAI/Inbox.lua'),savedVariablesFile:path.join(root,'save.lua'),capture:{enabled:false},slots:2,actMax:2,presenceMax:2};
  fs.mkdirSync(path.dirname(cfg.inboxFile),{recursive:true});fs.writeFileSync(path.join(path.dirname(cfg.inboxFile),'WoWAI.toc'),'## Interface: 16001');fs.writeFileSync(path.join(root,'config.json'),JSON.stringify(cfg));fs.writeFileSync(cfg.savedVariablesFile,'WoWAIDB={ ["outbox"]={ ["id"]=1,["chat"]="c",["session"]="s",["models"]=true,["text"]="7b7d" } }');

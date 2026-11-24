@@ -23,7 +23,7 @@ LIMITATIONS = (
     "The character updated timestamp does not independently date each inventory, gear or profession observation. Bank bankAt is retained separately.",
     "Absent fields mean unknown/unscanned. Empty mail alone does not establish a complete mailbox survey.",
     "Item links and explicit equipment slots are preserved; enchant and random-suffix interpretations are not verified for this build.",
-    "Optional character-sheet and completed-quest observations are timestamped separately. Combat, movement and sale completion are not supplied.",
+    "Optional character-sheet, completed/active quest and login/save location observations are timestamped separately. No combat or movement telemetry or sale completion is supplied.",
 )
 
 
@@ -66,6 +66,8 @@ def parse_alts_file(path: Path) -> dict:
             raise ValueError("Unreviewed faction")
         from goblin_eye.character_capture import validate_character_capture
         validate_character_capture(char)
+        from goblin_eye.quest_capture import validate_quest_capture
+        validate_quest_capture(char)
         _integer(char.get("level"), "level", 1, 1000)
         for field in ("updated", "seen", "playedAt", "bankAt"):
             if char.get(field) is not None:
@@ -112,8 +114,13 @@ def parse_alts_file(path: Path) -> dict:
                 _integer(slot, "bag slot", 0, 10000)
                 _integer(packed, "packed bag slot")
         for profession, recipes in (char.get("recipes") or {}).items():
-            if not isinstance(profession,str) or not isinstance(recipes,dict) or any(
-                not isinstance(name,str) or known is not True for name,known in recipes.items()):
+            # Newer saves store relative difficulty (0–3) for known recipes.
+            if not isinstance(profession, str) or not isinstance(recipes, dict) or any(
+                not isinstance(name, str) or (
+                    difficulty is not True and not (type(difficulty) is int and 0 <= difficulty <= 3)
+                )
+                for name, difficulty in recipes.items()
+            ):
                 raise ValueError("Invalid learned-recipe table")
     return root
 
@@ -158,7 +165,7 @@ class AltsForeverAdapter:
                 if connection.execute("SELECT 1 FROM character_snapshots WHERE sha256=?", (digest,)).fetchone():
                     continue
                 times=[char['updated']] if char.get('updated') else []
-                times.extend(char[k]['capturedAt'] for k in ('goblinEyeCharacter','goblinEyeQuests','goblinEyeGear') if char.get(k))
+                times.extend(char[k]['capturedAt'] for k in ('goblinEyeCharacter','goblinEyeQuests','goblinEyeGear','goblinEyeQuestLog','goblinEyeLocation') if char.get(k))
                 captured = datetime.fromtimestamp(max(times),timezone.utc).isoformat() if times else None
                 identity=char.get('goblinEyeCharacter',{})
                 reference = path.resolve().as_uri() + "#AltsForeverDB/chars/" + name
@@ -193,25 +200,32 @@ class AltsForeverWatcher:
     def __init__(self, database: Database, paths: tuple[str, ...] = (), interval: int = 3):
         self.database, self.paths, self.interval = database, paths, max(3, interval)
         self._signatures = {}
+        self._failures = {}
         self._stop = threading.Event()
         self._thread = None
 
     def scan_once(self):
         results = []
         for path in discover_alts_files(self.paths):
+            signature = None
             try:
                 stat = path.stat()
                 signature = (stat.st_mtime_ns, stat.st_size)
-                if self._signatures.get(str(path)) == signature:
+                if self._signatures.get(path) == signature:
                     continue
                 results.append(AltsForeverAdapter().import_file(self.database, path))
-                self._signatures[str(path)] = signature
+                self._signatures[path] = signature
+                self._failures.pop(path, None)
             except Exception as exc:
-                logging.exception("Alts Forever saved-file import failed: %s", path)
+                failure = (signature, type(exc), str(exc))
+                if self._failures.get(path) != failure:
+                    logging.exception("Alts Forever saved-file import failed: %s", path)
+                    self._failures[path] = failure
                 with self.database.write_transaction() as connection:
                     connection.execute("""INSERT INTO sources(source_key,name,source_type,trust_rank,last_error)
                         VALUES (?,'Alts Forever character observations','local_character_observation',1,?)
-                        ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error""", (SOURCE_KEY,str(exc)))
+                        ON CONFLICT(source_key) DO UPDATE SET last_error=excluded.last_error
+                        WHERE sources.last_error IS NOT excluded.last_error""", (SOURCE_KEY,str(exc)))
         return results
 
     @resilient_run

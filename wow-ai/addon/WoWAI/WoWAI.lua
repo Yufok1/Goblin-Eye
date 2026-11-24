@@ -1042,19 +1042,14 @@ function WoWAI.SkillLines()
 end
 
 function WoWAI.GameContext()
-	-- Conversation transport only. Research reads saved addon files through MCP.
-	-- Keep the empty value so hello clears context cached by older bridges.
-	return ""
-end
-
--- The context to put on the next record, or nil when the bridge already has
--- it (or it wouldn't fit next to this message; it goes with a later one).
--- "" when the setting is off, so the bridge drops what it had.
-local function ContextToSend(room)
-	local ctx = db.settings.context and WoWAI.GameContext() or ""
-	if ctx == (run.contextSent or "") then return nil end
-	if room and #ctx > room then return nil end
-	return ctx
+	-- Chat sender metadata only; no equipment, stats, location or quest reads.
+	local function clean(value)
+		return type(value) == "string" and value:gsub("[%c]", " "):sub(1, 160) or ""
+	end
+	local name = clean(UnitName and UnitName("player"))
+	local realm = clean(GetRealmName and GetRealmName())
+	if name == "" then return "" end
+	return "Chat sender (addon-reported identity):\nCharacter: " .. name .. "\nRealm: " .. (realm ~= "" and realm or "unknown")
 end
 
 -- Read a link's tooltip off a hidden GameTooltip, one line per row.
@@ -1158,14 +1153,14 @@ function WoWAI.Send(text, allow)
 	-- Shift-clicked links become [Name] plus their tooltip, which is what the agent can read.
 	local links
 	text, links = WoWAI.ExpandLinks(text)
-	local limit = Codec.MAX_PAYLOAD - 300 - #ToHex(ChatOptions(c))
+	local ctx = WoWAI.GameContext()
+	local limit = Codec.MAX_PAYLOAD - 300 - #ToHex(ChatOptions(c)) - #ctx
 	if #text > limit then
 		AddHistory(c, "system", "That message is too long for one send (" .. #text .. " chars, max ~" .. limit .. "). Split it up." .. (links > 0 and " Each linked item adds its tooltip to the message." or ""))
 		WoWAI.Render()
 		return
 	end
-	-- The game context rides along when the bridge doesn't have this version yet.
-	local ctx = ContextToSend(limit - #text)
+	-- Every message carries its own sender, including after an alt switch.
 
 	db.lastSeq = db.lastSeq + 1
 	local id = db.lastSeq
@@ -1175,6 +1170,7 @@ function WoWAI.Send(text, allow)
 	local options = ChatOptions(c)
 	if options ~= "" then table.insert(tokens, "opts=" .. ToHex(options)) end
 	c.pendingOptions, c.pendingAgent = options, c.agent or ""
+	c.pendingContext = ctx
 	local allowHex
 	if type(allow) == "table" and #allow > 0 then
 		table.insert(tokens, "allow=" .. table.concat(allow, ","))
@@ -1363,7 +1359,7 @@ function WoWAI.SayHello()
 	run.lastHelloAt = now
 	db.lastSeq = db.lastSeq + 1
 	local c = ActiveChat()
-	local ctx = db.settings.context and WoWAI.GameContext() or ""
+	local ctx = WoWAI.GameContext()
 	run.outbound[db.lastSeq] = { chat = c and c.id or "", cwd = c and c.cwd or "", flags = "h", name = c and c.name or "", text = "", ctx = ctx, sentAt = now, hello = true }
 	run.helloPollAt = now + 5
 	-- Deletions the bridge never confirmed ride along with the hello.
@@ -1401,7 +1397,7 @@ function WoWAI.Resend()
 	local options = c.pendingOptions or ChatOptions(c)
 	local flags = agent ~= "" and "agent=" .. agent or ""
 	if options ~= "" then flags = flags .. (flags ~= "" and ";" or "") .. "opts=" .. ToHex(options) end
-	run.outbound[c.pendingId] = { chat = c.id, cwd = c.cwd, flags = flags, name = c.name, text = text, sentAt = GetTime() }
+	run.outbound[c.pendingId] = { chat = c.id, cwd = c.cwd, flags = flags, name = c.name, text = text, ctx = c.pendingContext or "", sentAt = GetTime() }
 	run.sentAt = GetTime()
 	run.polls = 0
 	ScheduleNextPoll()
@@ -3157,7 +3153,7 @@ SlashCmdList["WOWAI"] = function(msg)
 		run.contextSent = nil
 		run.lastHelloAt = nil
 		if WoWAI.IsConnected() then WoWAI.SayHello() end
-		AddHistory(c, "system", "Research context comes from saved addon files through Goblin Eye MCP. WoWAI carries your conversation; automatic game context is disabled.")
+		AddHistory(c, "system", "Research context comes from saved addon files through Goblin Eye MCP. Chat sender name and realm are attached automatically. Gear, stats and quests still come from saved addon files.")
 		WoWAI.Render()
 		WoWAI.Toggle(true)
 	elseif cmd == "mode" then

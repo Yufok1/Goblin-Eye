@@ -13,7 +13,7 @@ function read(file,fallback){try{return JSON.parse(fs.readFileSync(file,'utf8'))
 function fixture(t,parallel=1,delay=60000){
  const base=path.join(__dirname,'tmp');fs.mkdirSync(base,{recursive:true});
  const root=fs.mkdtempSync(path.join(base,'lifecycle-')),bridge=path.join(__dirname,'..','bridge');
- for(const name of fs.readdirSync(bridge))if(/\.(js|ps1)$/.test(name))fs.copyFileSync(path.join(bridge,name),path.join(root,name));
+ for(const name of fs.readdirSync(bridge))if(/\.(js|ps1|py)$/.test(name))fs.copyFileSync(path.join(bridge,name),path.join(root,name));
  const cfg=JSON.parse(fs.readFileSync(path.join(bridge,'config.example.json'),'utf8'));
  cfg.addonDir=path.join(root,'addons');cfg.inboxFile=path.join(cfg.addonDir,'WoWAI','Inbox.lua');cfg.savedVariablesFile=path.join(root,'save.lua');
  cfg.defaultCwd=root;cfg.agent='codex';cfg.capture.enabled=false;cfg.slots=3;cfg.actMax=3;cfg.presenceMax=3;cfg.primerFile='';cfg.pollMs=50;cfg.maxParallel=parallel;
@@ -54,7 +54,7 @@ function fixture(t,parallel=1,delay=60000){
  async function start(){
   const presence=state().presence;
   const child=spawn(process.execPath,[path.join(root,'bridge.js')],{cwd:root,windowsHide:true,detached:process.platform!=='win32',stdio:['ignore','pipe','pipe']});children.push(child);
-  let errors='';child.stderr.on('data',d=>{errors+=d;});child.stdout.resume();
+  let errors='';child.stderr.on('data',d=>{errors+=d;fs.appendFileSync(path.join(root,'stderr.log'),d);});child.stdout.resume();
   await until(()=>state().presence!==undefined&&state().presence!==presence,'bridge startup '+errors);return child;
  }
  return {root,cfg,state,starts,inbox,send,start,kill};

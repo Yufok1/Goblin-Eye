@@ -88,10 +88,13 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    from goblin_eye.runtime_storage import configure, validate_storage
+    configure()
     args = parser().parse_args()
     settings = Settings.load(args.config)
     if args.database:
         settings = replace(settings, database_path=str(args.database))
+    validate_storage(Path(settings.database_path).absolute().resolve())
     read_only = args.command in {"characters", "companion", "observations", "sources", "next-data", "mcp", "research"}
     database = Database(settings.database_path, read_only=read_only)
     if args.command == "init":

@@ -4,7 +4,8 @@ const {install,mcpConfigs,options}=require('../../Setup-WoWAI');
 function fixture() {
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'Goblin Eye Setup With Spaces '));
  const src=path.resolve(__dirname,'../..');
- for(const name of ['bridge/config.example.json','bridge/install-slots.js','bridge/protocol.js']) {
+ fs.copyFileSync(path.join(src,'runtime-storage.json'),path.join(root,'runtime-storage.json'));
+ for(const name of ['bridge/config.example.json','bridge/install-slots.js','bridge/protocol.js','bridge/continuity.js']) {
   const dest=path.join(root,'wow-ai',name);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(path.join(src,'wow-ai',name),dest);
  }
  fs.cpSync(path.join(src,'wow-ai/addon/WoWAI'),path.join(root,'wow-ai/addon/WoWAI'),{recursive:true});

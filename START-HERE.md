@@ -12,8 +12,8 @@ markets are shown separately.
 
 ## 1. Start Goblin Eye
 
-1. **Right-click the Goblin Eye ZIP → Extract All.** Choose a writable location,
-   such as Documents. Open the extracted `Goblin-Eye` folder. Extract the whole
+1. **Right-click the Goblin Eye ZIP → Extract All.** Choose a writable folder on
+   a non-system drive, such as `D:\Goblin-Eye`. Open the extracted `Goblin-Eye` folder. Extract the whole
    ZIP: the `python` folder inside it is the bundled runtime.
 2. **Double-click `Start-Goblin-Eye.cmd`.** It prepares everything on the first
    run, then opens the dashboard. Keep its console window open while using it.
@@ -36,6 +36,10 @@ copy even when your terminal is in the correct folder. The included launcher
 always selects this copy.
 
 Goblin Eye stays in its own folder, outside WoW's AddOns folder.
+Runtime profiles, temporary files and tool/model caches stay in `data/runtime`
+inside that folder. Launchers reject C: and the Windows system drive for writable
+runtime storage. Installed Windows tools may still be read from their existing
+locations. See [chat storage](docs/IN_GAME_CHAT.md#local-storage) for private agent sign-ins.
 
 ## 2. Install the addons through CurseForge
 
@@ -106,6 +110,10 @@ Auctionator 340 can also save normalized realm keys and regional `PvP`, `PvE`
 or `RP` buckets. A matching regional bucket requires `local_ruleset` set
 explicitly (`pvp`, `normal` or `rp`); it takes priority over old realm storage.
 Normalized realm keys match the realm selected by AHledger or configuration.
+Auctionator 351's regional keys can include faction, such as `PvP Horde`.
+These require a matching selected ruleset and faction/profile; the key does
+not establish a realm or region. A matching faction-specific regional bucket
+takes priority over old realm storage and bare regional buckets.
 Unmatched keys are skipped and shown in Source health; they are never pooled.
 Saved-file failures appear there even before an addon has imported successfully.
 
@@ -165,6 +173,9 @@ not required for this setup. Booty Bay Broker and TheWoWDB connectors are also
 unfinished. See [Data connections](docs/DATA_CONNECTIONS.md) for exact coverage.
 
 QuestieDB imports static NPC/object locations, not your active quest log.
+The Alts Forever extension records active quests, objective progress and turn-in
+readiness, plus a starting location on login/save. These appear in Characters
+after a normal saved-file import; their capture timestamps are shown separately.
 Mapzeroth imports its static graph, not your character's flight discoveries.
 Goblin Eye does not control gameplay. Auction asking prices do not prove sales,
 and static spawn references do not show live mob availability.

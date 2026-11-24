@@ -130,8 +130,8 @@ class ResearchService:
             JOIN research_datasets d ON d.id=r.dataset_id JOIN sources s ON s.id=d.source_id
             WHERE d.active=1 AND instr(lower(r.name),lower(?))>0''')
         parts.append('''SELECT w.entity_type,w.entity_id,w.name,d.retrieved_at,d.game_build,d.confidence,d.evidence_kind,
-            w.raw_reference,s.source_key,s.name,s.url,s.trust_rank FROM world_entity_facts w
-            JOIN research_datasets d ON d.id=w.dataset_id JOIN sources s ON s.id=d.source_id
+            w.raw_reference,s.source_key,s.name,s.url,s.trust_rank FROM research_datasets d
+            CROSS JOIN world_entity_facts w ON d.id=w.dataset_id JOIN sources s ON s.id=d.source_id
             WHERE d.active=1 AND instr(lower(w.name),lower(?))>0''')
         union=' UNION ALL '.join(parts); args=[query.strip()]*len(parts)
         with self.database.transaction() as c:
@@ -404,6 +404,31 @@ class ResearchService:
                 ORDER BY c.confidence DESC, c.name"""
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def source_health(self, section='summary', limit=20, offset=0):
+        from goblin_eye.validation import integer
+        from goblin_eye.agent_responses import discovery_page
+        integer(limit,'limit',1,100); integer(offset,'offset')
+        sections=('sources','markets','watched_files','adapters','public_references')
+        if section not in ('summary',*sections): raise ValueError('Unknown source-health section')
+        result=self.sources()
+        if section!='summary':
+            rows=result['freshness']['public_references'] if section=='public_references' else result[section]
+            return discovery_page(dict(section=section,records=rows[offset:offset+limit],total=len(rows),
+                offset=offset,limit=limit,queried_at=result['queried_at']),detail='full')
+        result['section_counts']={key:len(result['freshness']['public_references'] if key=='public_references' else result[key]) for key in sections}
+        result['section_follow_up']='get_source_health(section=sources|markets|watched_files|adapters|public_references,limit=20,offset=next_offset)'
+        result.pop('markets')
+        result['auction_context'].pop('public_markets',None)
+        result['freshness'].pop('public_references',None)
+        result['adapters']=[{k:row[k] for k in ('key','display_name','status') if k in row} for row in result['adapters']]
+        result['source_error_count']=sum(bool(row.get('last_error')) for row in result['sources'])
+        # Bound all variable-length lists, retaining explicit totals/follow-ups.
+        for key in ('sources','watched_files','adapters'):
+            rows=result[key]
+            result[key]=rows[offset:offset+limit]
+            result[key+'_next_offset']=offset+len(result[key]) if offset+len(result[key])<len(rows) else None
+        return result
 
     def sources(self) -> dict[str, Any]:
         with self.database.transaction() as connection:

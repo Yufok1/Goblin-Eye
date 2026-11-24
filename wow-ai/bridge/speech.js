@@ -4,6 +4,7 @@ const fs = require('fs'), path = require('path');
 const {spawn} = require('child_process');
 const {randomUUID}=require('crypto');
 const {splitSummary} = require('./protocol');
+const Storage = require('./runtime-storage');
 const DEFAULTS = {enabled:false, mode:'summary', volume:70, rate:0, voice:'',profile:'desktop'};
 // Neural character profiles use local references; Desktop uses Windows speech.
 const PRESETS = {orc:{profile:'orc',rate:0},goblin:{profile:'goblin',rate:0},desktop:{profile:'desktop',rate:0}};
@@ -83,7 +84,8 @@ class SpeechManager {
  armVoiceIdle() {clearTimeout(this.idleTimer);this.idleTimer=setTimeout(()=>this.stop(),600000);this.idleTimer.unref?.();}
  ensureWorker() {
   if(!this.worker) {
-   const args=['-I','-X','utf8',path.join(this.directory,'neural-worker.py'),'--assets',this.neural.assets,'--parent',String(process.pid)];if(this.neural.quantize===true)args.push('--quantize');
+   const workerEnv=Storage.environment();
+   const args=['-I','-X','utf8','-X','pycache_prefix='+workerEnv.PYTHONPYCACHEPREFIX,path.join(this.directory,'neural-worker.py'),'--assets',this.neural.assets,'--parent',String(process.pid)];if(this.neural.quantize===true)args.push('--quantize');
    if(this.neural.engine==='nano')args.push('--engine','nano');
    if(this.neural.device==='hybrid')args.push('--device','hybrid');
    if(this.neural.device==='cuda-fp16')args.push('--device','cuda-fp16');
@@ -91,7 +93,9 @@ class SpeechManager {
    if(typeof this.neural.packages==='string')args.push('--packages',this.neural.packages);
    if(typeof this.neural.torchPackage==='string')args.push('--torch-package',this.neural.torchPackage);
    if(Number.isInteger(this.neural.threads)&&this.neural.threads>=1&&this.neural.threads<=8)args.push('--threads',String(this.neural.threads));
-   const child=this.spawn(this.neural.python,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});
+   Storage.validateRoot(path.resolve(this.neural.assets));
+   if(fs.existsSync(this.neural.assets))Storage.validateRoot(fs.realpathSync(this.neural.assets));
+   const child=this.spawn(this.neural.python,args,{env:workerEnv,windowsHide:true,stdio:['pipe','pipe','pipe']});
    this.worker=child;this.warming=true;let buffer='',diagnostic='';
    const fail=err=>{if(this.worker!==child)return;this.stop();this.error=String(err).slice(0,300);this.log('voice:',this.error);this.changed();};
    child.stdout.setEncoding('utf8');child.stdout.on('data',s=>{buffer+=s;let n;while((n=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,n);buffer=buffer.slice(n+1);if(!line.startsWith('@voice '))continue;let event;try{event=JSON.parse(line.slice(7));}catch{continue;}
@@ -137,7 +141,7 @@ class SpeechManager {
   this.spokenKey=key;this.startedAt=Date.now();
   this.log('voice:',`start ${this.settings.profile}; ${mode}; ${spoken.length} characters`);
   if(this.settings.profile!=='desktop'){this.neuralSay(spoken,mode);return;}
-  const child=this.spawn('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(this.directory,'speak.ps1'),'-ParentId',String(process.pid)],{windowsHide:true,stdio:['pipe','ignore','pipe']});
+  const child=this.spawn('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(this.directory,'speak.ps1'),'-ParentId',String(process.pid)],{env:Storage.environment(),windowsHide:true,stdio:['pipe','ignore','pipe']});
   this.active=child; this.changed(); let diagnostic='';
   child.stderr?.setEncoding('utf8'); child.stderr?.on('data',s=>{diagnostic=(diagnostic+s).slice(-2000);});
   const fail=err=>{if(this.active!==child)return;this.active=null;child.kill();this.error=String(err).slice(0,300);this.log('voice:',this.error);this.changed();};
@@ -154,7 +158,7 @@ class SpeechManager {
   const audioFile=path.join(this.neural.assets,this.neural.engine==='nano'?'auditions-nano':'auditions',this.settings.profile+'.wav');
   if(!fs.existsSync(audioFile))throw Error('The selected voice test clip is missing.');
   if(this.active)this.cancel();clearTimeout(this.idleTimer);this.error='';this.phase='Playing test clip';this.startedAt=Date.now();
-  const child=this.spawn('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(this.directory,'speak.ps1'),'-ParentId',String(process.pid)],{windowsHide:true,stdio:['pipe','ignore','pipe']});
+  const child=this.spawn('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(this.directory,'speak.ps1'),'-ParentId',String(process.pid)],{env:Storage.environment(),windowsHide:true,stdio:['pipe','ignore','pipe']});
   this.active=child;this.changed();let diagnostic='';
   child.stderr.setEncoding('utf8');child.stderr.on('data',s=>diagnostic=(diagnostic+s).slice(-2000));
   const done=err=>{if(this.active!==child)return;this.active=null;this.phase='Idle';if(err){child.kill();this.error=String(err).slice(0,300);this.log('voice:',this.error);}if(this.worker){this.idleTimer=setTimeout(()=>this.stop(),600000);this.idleTimer.unref?.();}this.changed();};

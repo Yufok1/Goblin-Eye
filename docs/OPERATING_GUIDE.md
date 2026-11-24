@@ -8,10 +8,16 @@ you configure them or a source reports them.
 
 For companion work, read get_companion_context, then query fresh evidence.
 
+Launchers keep writable profiles, temp files and tool/model caches under
+`data/runtime` on the installation's non-system drive. They reject C: for
+runtime storage; installed binaries and Windows dependencies may still be read
+from C:. The chat bridge has its own agent sign-ins; see IN_GAME_CHAT.md.
+
 | Question | Query sequence |
 | --- | --- |
 | Available evidence | get_economic_summary, then get_source_health |
 | Character or gear | list_characters, then get_character_snapshot |
+| Quest route | list_characters, intended get_character_snapshot, then get_character_active_quests; page next_offset and follow quest IDs into world evidence |
 | Item uses | search_items, get_item_research, get_recipe_evidence |
 | Acquisition | search_acquisition_sources or get_item_acquisition, then get_world_entity |
 | NPCs and locations | search_world_entities with zone/level/rank filters |
@@ -26,6 +32,13 @@ local addon prices are personal observations. Listing disappearance does not
 prove a sale. Follow compact pages' next_offset and shared provenance.
 
 Alts Forever observations update when WoW saves after /reload or logout.
+Active quest titles, objective counters and explicit turn-in readiness come from
+the Alts extension. `saved_location` is a separate login/save observation with
+normalized 0–1 coordinates and a UI map ID, never a live position. Missing or
+partial captures must not be treated as an empty quest log. Completion history
+remains available separately through `get_character_quests`.
+`get_source_health` returns a bounded summary; use its section counts and
+follow-ups to page sources, markets, files, adapters and public references.
 Equipment slots are explicit; bags have quantities. Bank/mail/recipes need
 their corresponding windows opened. Missing data is unknown and an empty
 mail object alone does not prove coverage. Exported full names must not be

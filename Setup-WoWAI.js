@@ -33,15 +33,19 @@ function json(file,data){atomic(file,JSON.stringify(data,null,2)+'\n');}
 function mcpConfigs(root) {
  const python=path.join(root,'python','python.exe');
  const args=['-m','goblin_eye','--config',path.join(root,'config.json'),'mcp'];
+ const portable=require('./wow-ai/bridge/runtime-storage').environment({}, {root:path.join(root,'data','runtime'),packageRoot:root,create:false});
  const env={PYTHONPATH:path.join(root,'src')};
+ for(const [key,value] of Object.entries(portable))if(!key.startsWith('GOBLIN_EYE_HOST_'))env[key]=value;
  return {
   '.mcp.json':JSON.stringify({mcpServers:{goblin_eye:{command:python,args,env}}},null,2)+'\n',
   'kilo.json':JSON.stringify({mcp:{'goblin-eye':{type:'local',command:[python,...args],environment:env,enabled:true,timeout:30000}}},null,2)+'\n',
-  '.codex/config.toml':'# Generated local read-only Goblin Eye MCP connection.\n[mcp_servers.goblin_eye]\ncommand = '+JSON.stringify(python)+'\nargs = '+JSON.stringify(args)+'\n\n[mcp_servers.goblin_eye.env]\nPYTHONPATH = '+JSON.stringify(env.PYTHONPATH)+'\n',
+  '.codex/config.toml':'# Generated local read-only Goblin Eye MCP connection.\n[mcp_servers.goblin_eye]\ncommand = '+JSON.stringify(python)+'\nargs = '+JSON.stringify(args)+'\n\n[mcp_servers.goblin_eye.env]\n'+Object.entries(env).map(([key,value])=>key+' = '+JSON.stringify(value)+'\n').join(''),
   '.claude/settings.local.json':JSON.stringify({enabledMcpjsonServers:['goblin_eye']},null,2)+'\n'
  };
 }
 function install(root,client,account,agent) {
+ require('./wow-ai/bridge/runtime-storage').validateRoot(path.resolve(root));
+ require('./wow-ai/bridge/runtime-storage').validateRoot(path.resolve(client));
  if(!isClient(client))throw Error('Select the client folder containing Wow*.exe and Interface (for example _forever_).');
  if(!accounts(client).includes(account))throw Error('Select an existing account folder. Log into WoW once if none exists.');
  if(!A.normalizeAgent(agent))throw Error('Unknown agent: '+agent);
@@ -79,6 +83,7 @@ function install(root,client,account,agent) {
  return {client,account,agent,project,configFile,slots:slots.stdout.trim()};
 }
 async function main(argv) {
+ require('./wow-ai/bridge/runtime-storage').activate();
  const opt=options(argv);
  if(opt.help){console.log('Setup-WoWAI.cmd [--wow "<client folder>"] [--account "<folder name>"] [--agent kilo|codex|claude|grok|agy|hermes] [--yes]\nRun interactively to select your client, account and agent. No npm install is needed.');return;}
  if(process.platform!=='win32')throw Error('The packaged setup supports Windows.');

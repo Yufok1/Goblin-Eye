@@ -9,6 +9,7 @@
   "presenceMax": 2000,
   "presenceIntervalMs": 30000,
   "maxParallel": 3,
+  "backgroundModelDiscovery": false,
   "capture": {
     "enabled": true,
     "processName": "WowB",

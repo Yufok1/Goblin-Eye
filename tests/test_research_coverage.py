@@ -26,6 +26,8 @@ def export_contract_fixture(addon, version='0.10.0'):
              'Gear.lua': 'function ns.ScanGear(c) end',
              'Scanner.lua': 'function ns.ScanContainers(bags, out, layout) end',
              'Upgrades.lua': 'function ns.ItemScore(link, role) end'}
+    if version in ('1.8.0', '1.9.1'):
+        files['Scanner.lua'] = 'function ns.ScanContainers(bags, out, layout, links) end'
     for name, text in files.items():
         (addon/name).write_text(text)
     return manifest
@@ -300,7 +302,7 @@ class CoverageTests(unittest.TestCase):
         self.assertNotIn('GoblinEyeExport.lua',(addon/'AltsForever.toc').read_text())
 
     def test_reviewed_alts_releases_install_into_both_manifests(self):
-        for version in ('0.13.0', '0.16.0', '1.0.1'):
+        for version in ('0.13.0', '0.16.0', '1.0.1', '1.7.0', '1.8.0', '1.9.1'):
             with self.subTest(version=version):
                 addon=self.path/version; addon.mkdir()
                 manifest=export_contract_fixture(addon, version)
@@ -310,6 +312,25 @@ class CoverageTests(unittest.TestCase):
                 self.assertFalse(install_item_export(addon,helper,self.path/'backups'))
                 for name in ('AltsForever.toc', 'AltsForever_Camelot.toc'):
                     self.assertEqual((addon/name).read_text().splitlines()[-1], 'GoblinEyeExport.lua')
+
+    def test_alts_191_rejects_changed_container_contract_and_unknown_versions(self):
+        helper=ROOT/'integrations/alts-forever/GoblinEyeExport.lua'
+        for index, mutation in enumerate(('containers', 'version', 'mixed')):
+            with self.subTest(mutation=mutation):
+                addon=self.path/str(index); addon.mkdir()
+                original=export_contract_fixture(addon, '1.9.1')
+                (addon/'AltsForever_Camelot.toc').write_text(original)
+                if mutation=='containers':
+                    (addon/'Scanner.lua').write_text('function ns.ScanContainers(bags, out, layout) end')
+                elif mutation=='version':
+                    (addon/'AltsForever_Camelot.toc').write_text(original.replace('1.9.1','99.0.0'))
+                else:
+                    (addon/'AltsForever_Camelot.toc').write_text(original.replace('1.9.1','1.8.0'))
+                with self.assertRaises(ValueError) as error:
+                    install_item_export(addon,helper,self.path/'backups')
+                if mutation=='version': self.assertIn('99.0.0',str(error.exception))
+                self.assertFalse((addon/'GoblinEyeExport.lua').exists())
+                self.assertFalse((self.path/'backups').exists())
 
     def test_current_release_rejects_changed_schema_signatures_and_mixed_manifests(self):
         cases = (('Core.lua', 'local DB_VERSION = 3\nfunction ns.On(event, fn) end'),

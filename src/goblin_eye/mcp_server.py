@@ -28,7 +28,7 @@ TOOLS = [
     },
     {
         "name": "get_character_snapshot",
-        "description": "Read a saved character observation and its source, freshness, item records and limitations. Follow item IDs with item research tools. Includes explicit slot names, observed item links and sourced base stats when available. Static variants retain build/fallback labels. Exact suffix/enchant values and effective character totals may be unknown; never rank an upgrade by color or name alone.",
+        "description": "Read a saved character observation and its source, freshness, item records and limitations. For quest routing, inspect saved_location and active_quest_log, then page get_character_active_quests for accepted quests, objectives and turn-ins. Follow item IDs with item research tools. Includes explicit slot names, observed item links and sourced base stats when available. Static variants retain build/fallback labels. Exact suffix/enchant values and effective character totals may be unknown; never rank an upgrade by color or name alone.",
         "inputSchema": {"type": "object", "properties": {"snapshot_id": {"type": "integer", "minimum": 1}}, "required": ["snapshot_id"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
@@ -138,8 +138,10 @@ TOOLS = [
     },
     {
         "name": "get_source_health",
-        "description": "Get source timestamps and adapter readiness.",
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "description": "Get bounded source health and errors. Page a section for complete source, market, watched-file, adapter or public-reference details. Worker state belongs only to this process.",
+        "inputSchema": {"type": "object", "properties": {
+            "section":{"type":"string","enum":["summary","sources","markets","watched_files","adapters","public_references"]},
+            "limit":{"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0}}, "additionalProperties": False},
         "annotations": {"readOnlyHint": True, "openWorldHint": False},
     },
     {
@@ -217,6 +219,8 @@ TOOLS.extend([
         {'item_id':_I,'item_link':_S,'game_build':_S,'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}},['item_id']),
     _tool('get_character_quests','Page saved Alts completion or Questie fallback matched to this snapshot and exact account/name. Later imports do not rewrite old snapshots. Questie file time is not completion time; absent IDs do not prove eligibility.',
         {'snapshot_id':_I,'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}},['snapshot_id']),
+    _tool('get_character_active_quests','Page accepted quests, objective progress and explicit turn-in readiness from the saved Alts snapshot, with saved starting location. Missing capture is unknown, not an empty log. Follow quest IDs into world evidence; location is a login/save observation, never live tracking.',
+        {'snapshot_id':_I,'limit':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}},['snapshot_id']),
     _tool('get_acquisition_evidence','Read one exact acquisition fact with full source provenance, raw fields and active/archive status.',{'fact_id':_I},['fact_id']),
     _tool('get_scan_provenance','Read the original retained local scan header: realm, region, faction, addon version, build, count and source document ID. unknown region remains unknown.',{'snapshot_id':_I},['snapshot_id']),
     _tool('search_world_entities', 'Search active world facts including QuestieDB quests by name/ID, zone, map, whole NPC level range, rank and acquisition method. Quest levels mean difficulty, not acceptance level; inspect quest_fields for requirements, starters and objectives. Named zones use sourced area-to-map associations. Static quests do not establish current eligibility or an active quest log. Use before declaring a mob or zone missing. Counts are source assertions, not verified live spawns.',
@@ -269,7 +273,7 @@ for tool in _COMPANION_WRITE_TOOLS:
     tool['annotations']['readOnlyHint'] = False
 
 for tool in TOOLS:
-    if tool['name'] in ('search_world_entities','search_acquisition_sources','get_item_acquisition','get_item_research','get_item_variants','get_character_snapshot','get_character_quests','get_research_datasets','search_evidence','get_world_entity','get_character_inventory','get_character_equipment'):
+    if tool['name'] in ('search_world_entities','search_acquisition_sources','get_item_acquisition','get_item_research','get_item_variants','get_character_snapshot','get_character_quests','get_character_active_quests','get_research_datasets','search_evidence','get_world_entity','get_character_inventory','get_character_equipment'):
         tool['inputSchema']['properties']['detail'] = {'type':'string','enum':['compact','full'],'default':'compact',
             'description':'Compact by default: shared provenance plus bounded pages; item research returns a summary and focused follow-ups. Full includes raw fields but retains a response size limit.'}
         tool['description'] += ' Compact by default. Follow next_offset for more results; evidence_ref resolves to the response evidence map. Missing summary fields do not mean missing data.'
@@ -349,6 +353,7 @@ class McpServer:
             "search_evidence": lambda: self.service.evidence_page(**arguments),
             "get_item_variants": lambda: ItemInstances(self.service.database).page(**arguments),
             "get_character_quests": lambda: self.service.characters.quests(**arguments),
+            "get_character_active_quests": lambda: self.service.characters.active_quests(**arguments),
             "get_character_inventory": lambda: self.service.characters.inventory(**arguments),
             "get_character_equipment": lambda: self.service.characters.equipment(**arguments),
             "get_enchant_evidence": lambda: ItemProperties(self.service.database).enchant(**arguments),
@@ -362,7 +367,7 @@ class McpServer:
                 float(arguments["auction_cut_rate"]) if "auction_cut_rate" in arguments else None,
                 arguments.get("deposit_copper"), arguments.get("additional_cost_copper", 0), arguments.get("deposit_loss_rate", 1.0)),
             "get_farming_research": self.service.farming,
-            "get_source_health": self.service.sources,
+            "get_source_health": lambda: self.service.source_health(**arguments),
             "list_cached_source_documents": lambda: self.service.documents(
                 str(arguments["source_key"]) if "source_key" in arguments else None,
                 int(arguments.get("limit", 100))),

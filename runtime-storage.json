@@ -1,0 +1,23 @@
+{
+  "directories": {
+    "HOME": "home", "USERPROFILE": "home",
+    "APPDATA": "home/AppData/Roaming", "LOCALAPPDATA": "home/AppData/Local",
+    "TEMP": "tmp", "TMP": "tmp", "TMPDIR": "tmp", "SQLITE_TMPDIR": "tmp",
+    "XDG_CACHE_HOME": "home/.cache", "XDG_CONFIG_HOME": "home/.config",
+    "XDG_DATA_HOME": "home/.local/share", "XDG_STATE_HOME": "home/.local/state",
+    "CODEX_HOME": "home/.codex", "CLAUDE_CONFIG_DIR": "home/.claude",
+    "GROK_HOME": "home/.grok", "HERMES_HOME": "home/.hermes",
+    "HF_HOME": "home/.cache/huggingface",
+    "HF_HUB_CACHE": "home/.cache/huggingface/hub",
+    "HUGGINGFACE_HUB_CACHE": "home/.cache/huggingface/hub",
+    "TRANSFORMERS_CACHE": "home/.cache/huggingface/transformers",
+    "TORCH_HOME": "home/.cache/torch", "TORCHINDUCTOR_CACHE_DIR": "home/.cache/torchinductor",
+    "TRITON_CACHE_DIR": "home/.cache/triton", "CUDA_CACHE_PATH": "home/.cache/cuda",
+    "NUMBA_CACHE_DIR": "home/.cache/numba", "MPLCONFIGDIR": "home/.cache/matplotlib",
+    "PIP_CACHE_DIR": "home/.cache/pip", "UV_CACHE_DIR": "home/.cache/uv",
+    "npm_config_cache": "home/.cache/npm", "BUN_INSTALL_CACHE_DIR": "home/.cache/bun",
+    "NODE_COMPILE_CACHE": "home/.cache/node", "PYTHONPYCACHEPREFIX": "home/.cache/pycache",
+    "PYTHONUSERBASE": "home/.local", "HF_ASSETS_CACHE": "home/.cache/huggingface/assets"
+  },
+  "values": {"PYTHONNOUSERSITE": "1", "POWERSHELL_TELEMETRY_OPTOUT": "1"}
+}
